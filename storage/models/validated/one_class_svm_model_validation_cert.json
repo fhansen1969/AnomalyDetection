@@ -1,0 +1,8 @@
+{
+  "model": "one_class_svm_model",
+  "validation_date": "2026-02-17T12:54:15.389626",
+  "validation_pipeline": "validation_pipeline.sh",
+  "status": "VALIDATED",
+  "features": "basic",
+  "ready_for_production": true
+}

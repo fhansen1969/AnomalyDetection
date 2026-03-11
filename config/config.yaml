@@ -1,0 +1,469 @@
+agents:
+  enabled: true
+  llm:
+    provider: ollama
+    model: mistral  # Consider using llama2:13b or mixtral for better responses
+    base_url: http://localhost:11434
+    # Enhanced token limits for detailed responses
+    max_tokens: 8192
+    temperature: 0.3  # Slightly higher for more creative analysis
+ 
+  reflection_rounds: 2
+ 
+  # Enhanced response settings
+  response_enhancement:
+    enable_structured_output: true
+    require_evidence: true
+    min_response_length: 1000
+    include_confidence_scores: true
+    include_alternative_hypotheses: true
+ 
+  # Enhanced agent prompts with detailed instructions
+  analysis_agent:
+    system_prompt: |
+      You are a senior security analyst with 15+ years of experience. Your analysis must be EXTREMELY detailed and comprehensive.
+ 
+      For each anomaly, provide:
+      1. INITIAL ASSESSMENT with anomaly classification, attack vectors, threat actor profile
+      2. TECHNICAL DEEP DIVE with all indicators, behavioral analysis, system impact
+      3. THREAT INTELLIGENCE CORRELATION with MITRE ATT&CK mapping
+      4. SEVERITY ASSESSMENT (Critical/High/Medium/Low) with justification scores
+      5. CONFIDENCE ANALYSIS with percentage and evidence quality
+      6. IMMEDIATE RECOMMENDATIONS with specific containment actions
+      7. QUESTIONS FOR OTHER TEAMS
+      8. EVIDENCE CHAIN documenting logical flow
+ 
+      Be SPECIFIC, use EXACT values, and JUSTIFY every conclusion with evidence.
+    response_format: "structured"
+    min_sections: 5
+    require_metrics: true
+ 
+  remediation_agent:
+    system_prompt: |
+      You are an incident response team lead. Provide EXHAUSTIVE remediation plans with precise, actionable steps.
+ 
+      Structure your response with:
+      1. IMMEDIATE CONTAINMENT (0-15 minutes) - Include exact commands, validation, rollback
+      2. SHORT-TERM INVESTIGATION (15 min - 2 hours) - Log analysis, memory analysis, file system checks
+      3. MEDIUM-TERM REMEDIATION (2-24 hours) - System hardening, monitoring enhancement
+      4. LONG-TERM PREVENTION (1-7 days) - Architecture changes, process improvements
+      5. RECOVERY VALIDATION - Specific tests to verify success
+      6. METRICS AND REPORTING - Success criteria, KPIs
+      7. AUTOMATION OPPORTUNITIES - Scripts and pseudo-code
+ 
+      Rate urgency (1-10) and complexity (1-10) with justification.
+    include_code: true
+    include_commands: true
+    categorize_by_urgency: true
+ 
+  reflection_agent:
+    system_prompt: |
+      You are a security architect and critical thinker. Provide DEEP, CONSTRUCTIVE analysis.
+ 
+      Your reflection must include:
+      1. ANALYSIS QUALITY ASSESSMENT - Completeness, accuracy, clarity, actionability scores
+      2. LOGICAL FLOW EXAMINATION - Trace reasoning and identify gaps
+      3. ASSUMPTION IDENTIFICATION - List all assumptions with validity assessment
+      4. ALTERNATIVE HYPOTHESES - Provide different explanations with likelihood
+      5. RISK-BENEFIT ANALYSIS - For each recommendation
+      6. MISSING CONTEXT IDENTIFICATION - Technical, business, threat, environmental
+      7. IMPROVEMENT RECOMMENDATIONS - Specific, actionable improvements
+      8. CONFIDENCE CALIBRATION - Overall and per-component confidence
+      9. DECISION QUALITY METRICS
+      10. LESSONS LEARNED
+    critique_depth: "comprehensive"
+    include_risk_analysis: true
+    suggest_improvements: true
+ 
+  security_critic:
+    system_prompt: |
+      You are a security critic responsible for rigorous evaluation. Assess:
+      1. FALSE POSITIVE LIKELIHOOD - With percentage and reasoning
+      2. MISSING CONTEXT - What additional information would change the assessment
+      3. LOGICAL GAPS - Identify unsupported conclusions
+      4. PROPORTIONALITY - Are responses appropriate to the threat level
+      5. ALTERNATIVE EXPLANATIONS - Benign reasons for the observed behavior
+      6. EVIDENCE QUALITY - Rate the strength of supporting evidence
+      7. COST-BENEFIT of proposed actions
+ 
+      Be skeptical but fair. Consider both overreaction and missing genuine threats.
+    require_false_positive_assessment: true
+    require_alternative_explanations: true
+ 
+  code_generator:
+    system_prompt: |
+      You are a security automation engineer. Generate PRODUCTION-READY code.
+ 
+      For each remediation action, provide:
+      1. DETECTION SCRIPTS - Complete with logging, error handling, and tests
+      2. REMEDIATION AUTOMATION - With validation and rollback capabilities
+      3. MONITORING RULES - Platform-specific configurations (Splunk/ELK/Prometheus)
+      4. INTEGRATION CODE - API connectors for security tools
+      5. TESTING FRAMEWORK - Unit and integration tests
+      6. DOCUMENTATION - Usage guides, configuration options, error handling
+ 
+      Use secure coding practices, make scripts idempotent, include comprehensive error handling.
+    languages: ["python", "bash", "powershell"]
+    include_tests: true
+    include_documentation: true
+    security_best_practices: true
+ 
+  data_collection_agent:
+    system_prompt: |
+      You are a digital forensics expert. Provide COMPREHENSIVE data collection strategies.
+ 
+      Your plan must include:
+      1. IMMEDIATE COLLECTION - Volatile data that changes/disappears
+      2. SYSTEM ARTIFACTS - Critical system data with specific commands
+      3. LOG COLLECTION MATRIX - Which logs, locations, timeframes, priorities
+      4. CORRELATION REQUIREMENTS - Data needed for correlation
+      5. EXTERNAL DATA SOURCES - Threat feeds, OSINT
+      6. EVIDENCE PRESERVATION - Chain of custody procedures
+      7. ANALYSIS PRIORITIES - Order of analysis with focus areas
+      8. TOOLING REQUIREMENTS - Specific tools needed
+      9. COLLECTION VALIDATION - Verify data integrity
+      10. REPORTING REQUIREMENTS - What to include in collection report
+    include_tools: true
+    include_timeline: true
+    categorize_by_volatility: true
+ 
+  # Threat Intelligence Agent (additional)
+  threat_intel:
+    system_prompt: |
+      You are a threat intelligence specialist. Provide COMPREHENSIVE intelligence enrichment.
+ 
+      Include:
+      1. INDICATOR ENRICHMENT - For each IoC with reputation scores
+      2. THREAT ACTOR ATTRIBUTION - Confidence levels, likely groups, motivations
+      3. CAMPAIGN ANALYSIS - Timeline, targets, infrastructure
+      4. TACTICAL ANALYSIS - Complete MITRE ATT&CK mapping
+      5. RELATED INCIDENTS - Historical context
+      6. PREDICTIVE ANALYSIS - Next likely actions
+      7. DEFENSIVE RECOMMENDATIONS - Detection opportunities, hunting queries
+      8. INTELLIGENCE GAPS - What's missing and how to fill gaps
+    confidence_weight: 1.2
+    data_sources:
+      - mitre_attack
+      - threat_feeds
+      - osint
+    include_iocs: true
+    include_ttps: true
+    map_to_mitre: true
+ 
+  # Enhanced agent settings
+  enable_dialogue: true
+  enable_consensus: true
+  confidence_threshold: 0.7
+ 
+  # Agent collaboration settings
+  collaboration:
+    max_dialogue_rounds: 5  # Increased from 3
+    consensus_required_for:
+      - severity_assessment
+      - remediation_priority
+      - false_positive_determination  # Added
+    feedback_enabled: true
+    enable_peer_review: true
+    require_evidence_chain: true
+ 
+    # Confidence thresholds
+    confidence_thresholds:
+      auto_approve: 0.9
+      manual_review: 0.7
+      additional_analysis: 0.5
+ 
+  # Individual agent configurations (optional overrides)
+  security_analyst:
+    confidence_weight: 1.0
+    expertise_areas:
+      - network_security
+      - application_security
+      - endpoint_security
+      - cloud_security  # Added
+      - identity_security  # Added
+ 
+  remediation:
+    urgency_threshold: 7
+    automation_enabled: true
+    require_validation_steps: true
+    require_rollback_plan: true
+ 
+  # Output formatting
+  output:
+    format: "structured_markdown"
+    include_executive_summary: true
+    include_technical_details: true
+    include_evidence_chain: true
+    include_confidence_metrics: true
+    include_action_timeline: true
+    max_response_length: 10000  # Ensure long responses aren't truncated
+ 
+  # Visualization settings
+  visualization:
+    show_dialogue: true
+    show_confidence: true
+    show_evidence_chain: true
+    show_decision_tree: true  # Added
+    show_metrics_dashboard: true  # Added
+ 
+  # Performance settings
+  performance:
+    parallel_agents: false  # Set to true for faster processing if system supports
+    cache_responses: true
+    response_timeout: 120  # seconds
+    retry_on_brief_response: true  # Retry if response is too short
+    max_retries: 3
+ 
+  # Quality assurance
+  quality_assurance:
+    min_confidence_threshold: 0.6
+    require_peer_review: true
+    enable_feedback_loop: true
+    track_accuracy_metrics: true
+    min_response_sections: 5
+    require_evidence_per_claim: true
+ 
+alerts:
+  enabled: true
+  email:
+    smtp_server: smtp.landisgyr.com
+    port: 587
+    sender: alerts@landisgyr.com
+    recipients:
+      - admin@landisgyr.com
+    # Enhanced alert settings
+    include_analysis_summary: true
+    include_remediation_steps: true
+    include_confidence_scores: true
+  threshold: high
+  channels:
+    - email
+    - webhook
+    - file
+  webhook:
+    url: http://landisgyr.com/webhook
+    auth_token: "SECRETTOKEN12345"
+    include_full_analysis: true
+    include_evidence_chain: true
+  file:
+    path: logs/alerts.json
+    format: jsonl
+ 
+collectors:
+  enabled:
+    - file
+    - rest_api
+  file:
+    paths:
+      - data/input/
+      - data/input/*.json
+    watch_interval_seconds: 60
+    batch_size: 100
+  kafka:
+    bootstrap_servers: localhost:9092
+    topics:
+      - name: security-events
+        group_id: anomaly_detection_group
+    consumer_timeout_ms: 5000
+    batch_size: 100
+  sql:
+    batch_size: 1000
+    timeout_seconds: 300
+    connections:
+      - name: postgres_main
+        dialect: postgresql
+        host: localhost
+        port: 5432
+        database: mydatabase
+        user: myuser
+        password: mypassword
+        queries:
+          - name: system_metrics
+            sql: "SELECT * FROM system_metrics WHERE timestamp > :last_timestamp ORDER BY timestamp DESC LIMIT :limit"
+            params:
+              last_timestamp: "2024-01-01T00:00:00Z"
+              limit: 1000
+          - name: user_logins
+            sql: "SELECT user_id, login_time, ip_address, success FROM user_logins WHERE login_time > NOW() - INTERVAL '24 hours'"
+  rest_api:
+    batch_size: 1000 # Max items to process per collection run
+    timeout_seconds: 60
+    max_retries: 5
+    retry_backoff: 1.0 # Longer backoff for Nagios XI to avoid overwhelming it
+    min_interval_seconds: 5 # Rate limit to 1 request every 5 seconds for THIS COLLECTOR INSTANCE (across all Nagios servers)
+ 
+    # You can remove 'authentication' if all auth is handled by CSV
+    # authentication:
+    #   type: api_key
+    #   key_name: apikey
+    #   key_value: "YOUR_GLOBAL_API_KEY_IF_ANY" # This would be used if NO endpoint has specific auth
+ 
+    # --- Nagios XI Specific Configuration ---
+    # Path to the CSV file containing Nagios XI server URLs and API keys
+    nagios_xi_config_file: "/opt/data/development/anomalydetection/AnomalyDetection/config/nagios_servers.csv"
+ 
+    # Default settings for all Nagios XI endpoints loaded from the CSV
+    nagios_xi_defaults:
+      params:
+        pretty: 1
+        output: json
+        # Add any other global Nagios XI specific parameters here if needed
+        # For example, to filter by host group across all servers by default:
+        # hostgroup_name: "production_servers"
+      verify_ssl: False
+      # data_path: "" # No data_path needed as getservices returns a direct list of services
+      transform:
+        # Optional: Map Nagios XI fields to your internal anomaly detection system's field names
+        field_mapping:
+          host_name: monitor_host
+          service_description: monitor_service
+          current_state: service_status_code
+          current_state_text: service_status_text
+          last_check: last_monitored_time
+          # Add more mappings as needed
+        include_unmapped: True # Keep other fields from Nagios XI response
+ 
+    # 'endpoints' list is now empty or contains other non-NagiosXI REST API endpoints
+    endpoints:
+      # - name: some_other_api_endpoint
+      #   url: https://api.example.com/data
+      #   method: GET
+      #   authentication:
+      #     type: bearer
+      #     token: "some_token"
+ 
+database:
+  type: postgresql
+  file_path: storage/anomaly_db.json
+  connection:
+    host: localhost
+    port: 5432
+    database: anomaly_detection
+    user: anomaly_user
+    password: St@rW@rs!
+  # Enhanced database settings for agent results
+  store_agent_dialogue: true
+  store_evidence_chains: true
+  store_confidence_metrics: true
+ 
+knowledge_base: {}
+ 
+models:
+  enabled:
+    - isolation_forest
+    - statistical
+    - autoencoder
+    - gan
+    - one_class_svm
+    - ensemble
+  isolation_forest:
+    contamination: 0.1
+    n_estimators: 100
+    random_state: 42
+  one_class_svm:
+    kernel: rbf
+    nu: 0.05
+    gamma: scale
+    threshold: 0.55
+  autoencoder:
+    hidden_dims: [128, 64, 32, 64, 128]
+    activation: relu
+    dropout_rate: 0.2
+    learning_rate: 0.001
+    epochs: 50
+    batch_size: 32
+    threshold: 0.5
+  gan:
+    latent_dim: 100
+    epochs: 200
+    batch_size: 32
+    learning_rate: 0.0002
+    beta_1: 0.5
+    dropout_rate: 0.3
+    random_state: 42
+    detection_strategy: reconstruction
+    threshold: 0.5
+  statistical:
+    window_size: 10
+    threshold_multiplier: 2.0
+    threshold: 0.5
+  ensemble:
+    weights:
+      isolation_forest_model: 0.6
+      statistical_model: 0.4
+      autoencoder_model: 0.5
+      gan_model: 0.3
+      one_class_svm_model: 0.5
+    models_to_use:
+      - isolation_forest_model
+      - statistical_model
+      - autoencoder_model
+      - gan_model
+      - one_class_svm_model
+    threshold: 0.5
+ 
+processors:
+  normalizers:
+    - name: generic_normalizer
+      type: json
+      timestamp_field: timestamp
+  feature_extractors:
+    - name: basic_features
+      fields: ["*"]
+      categorical_encoding: label
+      use_real_embeddings: false
+      text_fields: []
+      numerical_fields:
+        # SentinelOne security metrics
+        - activeThreats
+        - totalMemory
+        - cpuCount
+        - coreCount
+        # Solarwinds monitoring metrics
+        - Status
+        - NodeID
+      boolean_fields:
+        - isActive
+        - isUpToDate
+        - isDecommissioned
+        - isPendingUninstall
+        - isUninstalled
+        - infected
+        - firewallEnabled
+        - networkQuarantineEnabled
+        - threatRebootRequired
+        - encryptedApplications
+        - hasContainerizedWorkload
+        - locationEnabled
+      categorical_fields:
+        - detectionState
+        - machineType
+        - osType
+        - networkStatus
+        - osName
+        - siteName
+        - domain
+        - groupName
+        - agentVersion
+        - appsVulnerabilityStatus
+        - scanStatus
+        - mitigationMode
+        - rangerStatus
+        - computerName
+        # Solarwinds categorical fields
+        - Caption
+        - MachineType
+        - Vendor
+ 
+system:
+  log_level: DEBUG
+  name: Anomaly Detection System
+  output_dir: results
+  # Enhanced system settings
+  enable_rich_output: true
+  save_agent_dialogue: true
+  save_evidence_chains: true
+  export_formats:
+    - json
+    - markdown
+    - html

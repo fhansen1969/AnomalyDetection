@@ -1,0 +1,194 @@
+# ============================================================================
+# CUSTOM EXTENSIONS CONFIGURATION
+# ============================================================================
+
+# New Data Collectors
+collectors:
+  enabled:
+    - file
+    - prometheus
+    - network_flow
+
+  prometheus:
+    endpoint: "http://prometheus.example.com:9090"
+    metrics:
+      - name: "cpu_usage"
+        query: "rate(cpu_usage_percent[5m])"
+      - name: "memory_usage"
+        query: "memory_usage_bytes / memory_total_bytes"
+      - name: "error_rate"
+        query: "rate(http_requests_total{status=~'5..'}[5m]) / rate(http_requests_total[5m])"
+
+  network_flow:
+    collector_type: "netflow"
+    port: 2055
+    max_flows_per_second: 10000
+    fields:
+      - src_ip
+      - dst_ip
+      - src_port
+      - dst_port
+      - protocol
+      - bytes
+      - packets
+
+# New Feature Extractors
+processors:
+  feature_extractors:
+    - name: network_extractor
+      type: network_feature_extractor
+      ip_fields: ["src_ip", "dst_ip", "client_ip"]
+      port_fields: ["src_port", "dst_port"]
+      protocol_fields: ["protocol"]
+      enable_geographic: true
+      geoip_db_path: "/usr/share/GeoIP/GeoLite2-City.mmdb"
+      extract_temporal_features: true
+      extract_ip_features: true
+
+    - name: text_sentiment_extractor
+      type: text_sentiment_extractor
+      text_fields: ["description", "message", "comment"]
+      use_sentiment_analysis: true
+      use_emotion_detection: true
+      sentiment_model: "cardiffnlp/twitter-roberta-base-sentiment"
+      emotion_model: "j-hartmann/emotion-english-distilroberta-base"
+
+# New Anomaly Detection Models
+models:
+  enabled:
+    - statistical
+    - clustering
+    - autoencoder
+
+  clustering:
+    algorithm: "kmeans"
+    n_clusters: 12
+    contamination: 0.05
+    threshold: 0.7
+    random_state: 42
+
+  lstm_autoencoder:
+    type: lstm_autoencoder
+    sequence_length: 50
+    hidden_dims: [128, 64, 32]
+    epochs: 100
+    batch_size: 64
+    threshold: 0.7
+    reconstruction_threshold: 0.1
+
+  prophet_model:
+    type: prophet_anomaly_detector
+    seasonality_mode: "multiplicative"
+    changepoint_prior_scale: 0.05
+    seasonality_prior_scale: 10.0
+    threshold: 0.8
+
+# Enhanced Alert Channels
+alerts:
+  enabled: true
+
+  channels:
+    - type: slack
+      enabled: true
+      webhook_url: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+      channel: "#security-alerts"
+      severity_settings:
+        Critical:
+          color: "danger"
+          icon: ":fire:"
+          mention: true
+          channels: ["#security", "#executives"]
+        High:
+          color: "warning"
+          icon: ":warning:"
+          mention: false
+
+    - type: teams
+      enabled: true
+      webhook_url: "https://outlook.office.com/webhook/YOUR/TEAMS/WEBHOOK"
+      severity_threshold: "high"
+
+    - type: pagerduty
+      enabled: true
+      routing_key: "YOUR_PAGERDUTY_KEY"
+      severity_mapping:
+        Critical: "critical"
+        High: "error"
+        Medium: "warning"
+        Low: "info"
+
+# Custom Correlation Rules
+correlation:
+  enabled: true
+
+  rules:
+    - name: "network_anomalies"
+      pattern: "anomalies with 'network' in model name within 5 minutes"
+      min_occurrences: 3
+      severity_boost: 0.2
+
+    - name: "user_behavior"
+      pattern: "anomalies from same user within 1 hour"
+      min_occurrences: 5
+      severity_boost: 0.3
+
+    - name: "system_wide"
+      pattern: "anomalies across multiple systems within 10 minutes"
+      min_occurrences: 10
+      severity_boost: 0.5
+
+# Custom Agent Specializations
+agents:
+  enabled: true
+
+  specialized_agents:
+    - name: network_security_agent
+      expertise: "network_security"
+      system_prompt: |
+        You are a network security specialist. Focus on:
+        - Network traffic analysis
+        - Protocol anomalies
+        - IP reputation and geographic analysis
+        - Firewall and IDS correlation
+
+    - name: application_security_agent
+      expertise: "application_security"
+      system_prompt: |
+        You are an application security expert. Focus on:
+        - Application log analysis
+        - Authentication anomalies
+        - API abuse patterns
+        - Database security events
+
+    - name: cloud_security_agent
+      expertise: "cloud_security"
+      system_prompt: |
+        You are a cloud security specialist. Focus on:
+        - Cloud service anomalies
+        - Identity and access management
+        - Resource usage patterns
+        - Multi-cloud correlation
+
+# Custom Dashboards
+ui:
+  custom_dashboards:
+    - name: network_security_dashboard
+      widgets:
+        - type: anomaly_map
+          title: "Network Anomaly Heatmap"
+          data_source: "network_anomalies"
+        - type: time_series
+          title: "Traffic Volume Anomalies"
+          metrics: ["bytes", "packets", "connections"]
+        - type: top_alerts
+          title: "Top Network Threats"
+          limit: 10
+
+    - name: application_performance_dashboard
+      widgets:
+        - type: performance_metrics
+          title: "Application Response Times"
+        - type: error_rate_chart
+          title: "Error Rate Trends"
+        - type: anomaly_timeline
+          title: "Application Anomalies Over Time"

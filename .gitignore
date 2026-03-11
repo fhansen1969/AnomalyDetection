@@ -1,0 +1,52 @@
+# Virtual environment
+venv/
+.venv/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Environment and secrets
+.env
+secrets/
+
+# Logs
+logs/
+*.log
+api_server.log
+
+# Processed/temporary data
+data/processed/
+data/shared/
+tmp/
+
+# Large training data (kafka batch files)
+data/training/kafka_batch_*.json
+
+# Model storage (large binary files)
+storage/models/*.pkl
+storage/models/*.joblib
+storage/models/*.keras
+
+# Stored anomalies (generated runtime data)
+storage/anomalies/
+
+# Reports (generated output)
+reports/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/
+
+# Claude Code
+.claude/

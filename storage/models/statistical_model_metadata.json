@@ -1,0 +1,16 @@
+{
+  "name": "statistical_model",
+  "type": "StatisticalModel",
+  "status": "trained",
+  "trained": true,
+  "emergency_save": true,
+  "emergency_save_timestamp": "2026-02-17T12:53:47.390393",
+  "training_time_seconds": 0.0,
+  "samples_trained": 12,
+  "file_size_kb": 2.87,
+  "files": {
+    "pkl": "statistical_model.pkl",
+    "joblib": null,
+    "metadata": "statistical_model_metadata.json"
+  }
+}

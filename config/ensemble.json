@@ -1,0 +1,8 @@
+{
+    "weights":
+      "isolation_forest": 0.6
+      "statistical": 0.4
+      "autoencoder": 0.5
+      "gan": 0.3
+      "one_class_svm": 0.5
+}

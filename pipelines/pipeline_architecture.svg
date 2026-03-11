@@ -1,0 +1,225 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1000">
+  <defs>
+    <!-- Define gradients -->
+    <linearGradient id="testGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4A90E2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#357ABD;stop-opacity:1" />
+    </linearGradient>
+    
+    <linearGradient id="validationGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F39C12;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#D68910;stop-opacity:1" />
+    </linearGradient>
+    
+    <linearGradient id="detectionGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#27AE60;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#229954;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Arrow marker -->
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#333" />
+    </marker>
+  </defs>
+  
+  <!-- Title -->
+  <text x="700" y="40" font-family="Arial, sans-serif" font-size="28" font-weight="bold" text-anchor="middle" fill="#333">
+    Anomaly Detection Pipeline Architecture
+  </text>
+  
+  <!-- Data Sources -->
+  <g id="data-sources">
+    <rect x="50" y="100" width="200" height="180" fill="#E8F4F8" stroke="#2C3E50" stroke-width="2" rx="10"/>
+    <text x="150" y="130" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">Data Sources</text>
+    
+    <rect x="70" y="150" width="160" height="30" fill="#D5E8D4" stroke="#82B366" rx="5"/>
+    <text x="150" y="170" font-family="Arial" font-size="12" text-anchor="middle">Files (JSON/CSV)</text>
+    
+    <rect x="70" y="190" width="160" height="30" fill="#DAE8FC" stroke="#6C8EBF" rx="5"/>
+    <text x="150" y="210" font-family="Arial" font-size="12" text-anchor="middle">Databases (SQL)</text>
+    
+    <rect x="70" y="230" width="160" height="30" fill="#FFF2CC" stroke="#D6B656" rx="5"/>
+    <text x="150" y="250" font-family="Arial" font-size="12" text-anchor="middle">APIs / Kafka</text>
+  </g>
+  
+  <!-- Test Pipeline -->
+  <g id="test-pipeline">
+    <rect x="350" y="100" width="250" height="500" fill="url(#testGradient)" stroke="#2C3E50" stroke-width="3" rx="15" opacity="0.9"/>
+    <text x="475" y="130" font-family="Arial" font-size="20" font-weight="bold" text-anchor="middle" fill="white">TEST PIPELINE</text>
+    
+    <!-- Pipeline stages -->
+    <rect x="370" y="150" width="210" height="40" fill="white" stroke="#2C3E50" rx="5" opacity="0.9"/>
+    <text x="475" y="175" font-family="Arial" font-size="12" text-anchor="middle">1. Data Collection</text>
+    
+    <rect x="370" y="200" width="210" height="40" fill="white" stroke="#2C3E50" rx="5" opacity="0.9"/>
+    <text x="475" y="225" font-family="Arial" font-size="12" text-anchor="middle">2. Preprocessing</text>
+    
+    <rect x="370" y="250" width="210" height="40" fill="white" stroke="#2C3E50" rx="5" opacity="0.9"/>
+    <text x="475" y="275" font-family="Arial" font-size="12" text-anchor="middle">3. Feature Engineering</text>
+    
+    <rect x="370" y="300" width="210" height="40" fill="white" stroke="#2C3E50" rx="5" opacity="0.9"/>
+    <text x="475" y="325" font-family="Arial" font-size="12" text-anchor="middle">4. Data Splitting (60/20/20)</text>
+    
+    <rect x="370" y="350" width="210" height="40" fill="white" stroke="#2C3E50" rx="5" opacity="0.9"/>
+    <text x="475" y="375" font-family="Arial" font-size="12" text-anchor="middle">5. Model Training</text>
+    
+    <rect x="370" y="400" width="210" height="40" fill="white" stroke="#2C3E50" rx="5" opacity="0.9"/>
+    <text x="475" y="425" font-family="Arial" font-size="12" text-anchor="middle">6. Model Evaluation</text>
+    
+    <rect x="370" y="450" width="210" height="40" fill="white" stroke="#2C3E50" rx="5" opacity="0.9"/>
+    <text x="475" y="475" font-family="Arial" font-size="12" text-anchor="middle">7. Model Export</text>
+    
+    <!-- Output -->
+    <rect x="370" y="520" width="210" height="60" fill="#E8F4F8" stroke="#2C3E50" rx="5"/>
+    <text x="475" y="545" font-family="Arial" font-size="12" font-weight="bold" text-anchor="middle">Output:</text>
+    <text x="475" y="565" font-family="Arial" font-size="11" text-anchor="middle">Trained Models + Reports</text>
+  </g>
+  
+  <!-- Validation Pipeline -->
+  <g id="validation-pipeline">
+    <rect x="650" y="100" width="250" height="500" fill="url(#validationGradient)" stroke="#2C3E50" stroke-width="3" rx="15" opacity="0.9"/>
+    <text x="775" y="130" font-family="Arial" font-size="20" font-weight="bold" text-anchor="middle" fill="white">VALIDATION PIPELINE</text>
+    
+    <!-- Pipeline stages -->
+    <rect x="670" y="150" width="210" height="40" fill="white" stroke="#2C3E50" rx="5" opacity="0.9"/>
+    <text x="775" y="175" font-family="Arial" font-size="12" text-anchor="middle">1. Load Validation Data</text>
+    
+    <rect x="670" y="200" width="210" height="40" fill="white" stroke="#2C3E50" rx="5" opacity="0.9"/>
+    <text x="775" y="225" font-family="Arial" font-size="12" text-anchor="middle">2. Preprocessing</text>
+    
+    <rect x="670" y="250" width="210" height="40" fill="white" stroke="#2C3E50" rx="5" opacity="0.9"/>
+    <text x="775" y="275" font-family="Arial" font-size="12" text-anchor="middle">3. Load Trained Models</text>
+    
+    <rect x="670" y="300" width="210" height="40" fill="white" stroke="#2C3E50" rx="5" opacity="0.9"/>
+    <text x="775" y="325" font-family="Arial" font-size="12" text-anchor="middle">4. Model Validation</text>
+    
+    <rect x="670" y="350" width="210" height="40" fill="white" stroke="#2C3E50" rx="5" opacity="0.9"/>
+    <text x="775" y="375" font-family="Arial" font-size="12" text-anchor="middle">5. Performance Metrics</text>
+    
+    <rect x="670" y="400" width="210" height="40" fill="white" stroke="#2C3E50" rx="5" opacity="0.9"/>
+    <text x="775" y="425" font-family="Arial" font-size="12" text-anchor="middle">6. Baseline Comparison</text>
+    
+    <rect x="670" y="450" width="210" height="40" fill="white" stroke="#2C3E50" rx="5" opacity="0.9"/>
+    <text x="775" y="475" font-family="Arial" font-size="12" text-anchor="middle">7. Model Promotion</text>
+    
+    <!-- Output -->
+    <rect x="670" y="520" width="210" height="60" fill="#E8F4F8" stroke="#2C3E50" rx="5"/>
+    <text x="775" y="545" font-family="Arial" font-size="12" font-weight="bold" text-anchor="middle">Output:</text>
+    <text x="775" y="565" font-family="Arial" font-size="11" text-anchor="middle">Validated Models + Certs</text>
+  </g>
+  
+  <!-- Detection Pipeline -->
+  <g id="detection-pipeline">
+    <rect x="950" y="100" width="250" height="500" fill="url(#detectionGradient)" stroke="#2C3E50" stroke-width="3" rx="15" opacity="0.9"/>
+    <text x="1075" y="130" font-family="Arial" font-size="20" font-weight="bold" text-anchor="middle" fill="white">DETECTION PIPELINE</text>
+    
+    <!-- Pipeline stages -->
+    <rect x="970" y="150" width="210" height="40" fill="white" stroke="#2C3E50" rx="5" opacity="0.9"/>
+    <text x="1075" y="175" font-family="Arial" font-size="12" text-anchor="middle">1. Real-time Collection</text>
+    
+    <rect x="970" y="200" width="210" height="40" fill="white" stroke="#2C3E50" rx="5" opacity="0.9"/>
+    <text x="1075" y="225" font-family="Arial" font-size="12" text-anchor="middle">2. Feature Extraction</text>
+    
+    <rect x="970" y="250" width="210" height="40" fill="white" stroke="#2C3E50" rx="5" opacity="0.9"/>
+    <text x="1075" y="275" font-family="Arial" font-size="12" text-anchor="middle">3. Load Prod Models</text>
+    
+    <rect x="970" y="300" width="210" height="40" fill="white" stroke="#2C3E50" rx="5" opacity="0.9"/>
+    <text x="1075" y="325" font-family="Arial" font-size="12" text-anchor="middle">4. Anomaly Detection</text>
+    
+    <rect x="970" y="350" width="210" height="40" fill="white" stroke="#2C3E50" rx="5" opacity="0.9"/>
+    <text x="1075" y="375" font-family="Arial" font-size="12" text-anchor="middle">5. Agent Analysis</text>
+    
+    <rect x="970" y="400" width="210" height="40" fill="white" stroke="#2C3E50" rx="5" opacity="0.9"/>
+    <text x="1075" y="425" font-family="Arial" font-size="12" text-anchor="middle">6. Alert Generation</text>
+    
+    <rect x="970" y="450" width="210" height="40" fill="white" stroke="#2C3E50" rx="5" opacity="0.9"/>
+    <text x="1075" y="475" font-family="Arial" font-size="12" text-anchor="middle">7. Results Storage</text>
+    
+    <!-- Output -->
+    <rect x="970" y="520" width="210" height="60" fill="#E8F4F8" stroke="#2C3E50" rx="5"/>
+    <text x="1075" y="545" font-family="Arial" font-size="12" font-weight="bold" text-anchor="middle">Output:</text>
+    <text x="1075" y="565" font-family="Arial" font-size="11" text-anchor="middle">Anomalies + Alerts</text>
+  </g>
+  
+  <!-- Arrows showing data flow -->
+  <line x1="250" y1="190" x2="350" y2="190" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="600" y1="550" x2="650" y2="270" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="900" y1="550" x2="950" y2="270" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  
+  <!-- Storage Components -->
+  <g id="storage">
+    <rect x="350" y="650" width="200" height="80" fill="#FFE6E6" stroke="#E74C3C" stroke-width="2" rx="10"/>
+    <text x="450" y="680" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle">Model Storage</text>
+    <text x="450" y="700" font-family="Arial" font-size="11" text-anchor="middle">storage/models/</text>
+    <text x="450" y="715" font-family="Arial" font-size="11" text-anchor="middle">test/ validated/ prod/</text>
+    
+    <rect x="600" y="650" width="200" height="80" fill="#E6F3FF" stroke="#3498DB" stroke-width="2" rx="10"/>
+    <text x="700" y="680" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle">Anomaly Database</text>
+    <text x="700" y="700" font-family="Arial" font-size="11" text-anchor="middle">PostgreSQL</text>
+    <text x="700" y="715" font-family="Arial" font-size="11" text-anchor="middle">+ Agent Analysis</text>
+    
+    <rect x="850" y="650" width="200" height="80" fill="#E6FFE6" stroke="#27AE60" stroke-width="2" rx="10"/>
+    <text x="950" y="680" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle">Alert System</text>
+    <text x="950" y="700" font-family="Arial" font-size="11" text-anchor="middle">Email / Webhook</text>
+    <text x="950" y="715" font-family="Arial" font-size="11" text-anchor="middle">Real-time Notifications</text>
+  </g>
+  
+  <!-- Feature Engineering Detail -->
+  <g id="feature-engineering">
+    <rect x="1250" y="200" width="120" height="200" fill="#F0F0F0" stroke="#666" stroke-width="1" rx="5"/>
+    <text x="1310" y="220" font-family="Arial" font-size="12" font-weight="bold" text-anchor="middle">Features</text>
+    
+    <text x="1260" y="240" font-family="Arial" font-size="10">• Statistical</text>
+    <text x="1260" y="255" font-family="Arial" font-size="10">• Time-based</text>
+    <text x="1260" y="270" font-family="Arial" font-size="10">• Domain-specific</text>
+    <text x="1260" y="285" font-family="Arial" font-size="10">• Interactions</text>
+    <text x="1260" y="300" font-family="Arial" font-size="10">• PCA/Clustering</text>
+    
+    <text x="1310" y="330" font-family="Arial" font-size="11" font-weight="bold" text-anchor="middle">New Data</text>
+    <text x="1260" y="350" font-family="Arial" font-size="10">• Apply saved</text>
+    <text x="1260" y="365" font-family="Arial" font-size="10">  transformers</text>
+    <text x="1260" y="380" font-family="Arial" font-size="10">• Same pipeline</text>
+  </g>
+  
+  <!-- ML Models -->
+  <g id="ml-models">
+    <rect x="50" y="750" width="1200" height="80" fill="#FFF9E6" stroke="#F39C12" stroke-width="2" rx="10"/>
+    <text x="650" y="775" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle">Supported ML Models</text>
+    
+    <text x="150" y="800" font-family="Arial" font-size="12">Isolation Forest</text>
+    <text x="300" y="800" font-family="Arial" font-size="12">Statistical</text>
+    <text x="450" y="800" font-family="Arial" font-size="12">Autoencoder</text>
+    <text x="600" y="800" font-family="Arial" font-size="12">GAN-based</text>
+    <text x="750" y="800" font-family="Arial" font-size="12">One-Class SVM</text>
+    <text x="900" y="800" font-family="Arial" font-size="12">Ensemble</text>
+    
+    <text x="1050" y="800" font-family="Arial" font-size="11" font-style="italic">+ Custom Models</text>
+  </g>
+  
+  <!-- Agent System -->
+  <g id="agent-system">
+    <rect x="50" y="850" width="1200" height="100" fill="#F0E6FF" stroke="#8E44AD" stroke-width="2" rx="10"/>
+    <text x="650" y="875" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle">Multi-Agent AI Analysis System</text>
+    
+    <text x="100" y="900" font-family="Arial" font-size="11">Security Analyst</text>
+    <text x="100" y="920" font-family="Arial" font-size="10" fill="#666">Severity assessment</text>
+    
+    <text x="300" y="900" font-family="Arial" font-size="11">Threat Intel</text>
+    <text x="300" y="920" font-family="Arial" font-size="10" fill="#666">Pattern correlation</text>
+    
+    <text x="500" y="900" font-family="Arial" font-size="11">Remediation</text>
+    <text x="500" y="920" font-family="Arial" font-size="10" fill="#666">Action planning</text>
+    
+    <text x="700" y="900" font-family="Arial" font-size="11">Code Generator</text>
+    <text x="700" y="920" font-family="Arial" font-size="10" fill="#666">Automation scripts</text>
+    
+    <text x="900" y="900" font-family="Arial" font-size="11">Security Review</text>
+    <text x="900" y="920" font-family="Arial" font-size="10" fill="#666">Quality validation</text>
+    
+    <text x="1100" y="900" font-family="Arial" font-size="11">Data Collector</text>
+    <text x="1100" y="920" font-family="Arial" font-size="10" fill="#666">Evidence gathering</text>
+  </g>
+  
+  <!-- Key Features -->
+  <text x="50" y="980" font-family="Arial" font-size="10" fill="#666">Features: Real-time processing • Continuous monitoring • Multi-model ensemble • Agent collaboration • Automated alerting • Comprehensive reporting</text>
+</svg>

@@ -1,0 +1,16 @@
+{
+  "name": "one_class_svm_model",
+  "type": "OneClassSVMModel",
+  "status": "trained",
+  "trained": true,
+  "emergency_save": true,
+  "emergency_save_timestamp": "2026-02-17T12:53:49.510517",
+  "training_time_seconds": 0.0,
+  "samples_trained": 12,
+  "file_size_kb": 4.27,
+  "files": {
+    "pkl": "one_class_svm_model.pkl",
+    "joblib": "one_class_svm_model.joblib",
+    "metadata": "one_class_svm_model_metadata.json"
+  }
+}

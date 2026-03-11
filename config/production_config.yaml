@@ -1,0 +1,90 @@
+# Production Configuration for Anomaly Detection System
+# Based on test results
+
+# Model selection based on performance
+models:
+  # Primary model - highest detection rate
+  primary:
+    name: statistical_model
+    threshold: 0.7
+    enabled: true
+  
+  # Secondary model - balanced detection
+  secondary:
+    name: autoencoder_model
+    threshold: 0.6
+    enabled: true
+  
+  # Real-time model - fastest processing
+  realtime:
+    name: one_class_svm_model
+    threshold: 0.5
+    enabled: true
+  
+  # Additional models (need tuning)
+  experimental:
+    - name: isolation_forest_model
+      contamination: 0.3
+      enabled: false
+    - name: gan_model
+      threshold: 0.5
+      enabled: false
+
+# Alert configuration
+alerts:
+  # Network alerts
+  network:
+    severity_threshold: 0.7
+    alert_types:
+      - DDoS_suspected
+      - data_exfiltration_suspected
+      - brute_force_attack
+      - sql_injection_attempt
+      - port_scan_detected
+    notification_channels:
+      - email
+      - slack
+  
+  # SolarWinds alerts
+  solarwinds:
+    severity_threshold: 4  # High severity
+    triggered_count_threshold: 50
+    notification_channels:
+      - email
+      - solarwinds_integration
+
+# Correlation settings
+correlation:
+  enabled: true
+  time_window: 3600  # 1 hour
+  min_correlation_score: 0.5
+  patterns:
+    - name: "coordinated_attack"
+      min_events: 5
+      time_span: 300  # 5 minutes
+    - name: "lateral_movement"
+      min_events: 3
+      time_span: 1800  # 30 minutes
+
+# Performance settings
+performance:
+  batch_size: 1000
+  max_workers: 4
+  cache_enabled: true
+  cache_ttl: 3600
+
+# Data retention
+retention:
+  anomalies: 90  # days
+  raw_data: 30   # days
+  correlations: 60  # days
+
+# Monitoring
+monitoring:
+  enabled: true
+  metrics:
+    - model_accuracy
+    - detection_rate
+    - false_positive_rate
+    - processing_time
+  export_interval: 300  # 5 minutes

@@ -1,0 +1,16 @@
+{
+  "name": "isolation_forest_model",
+  "type": "IsolationForestModel",
+  "status": "trained",
+  "trained": true,
+  "emergency_save": true,
+  "emergency_save_timestamp": "2026-02-17T12:53:46.937123",
+  "training_time_seconds": 0.06,
+  "samples_trained": 12,
+  "file_size_kb": 209.81,
+  "files": {
+    "pkl": "isolation_forest_model.pkl",
+    "joblib": "isolation_forest_model.joblib",
+    "metadata": "isolation_forest_model_metadata.json"
+  }
+}

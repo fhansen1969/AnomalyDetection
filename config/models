@@ -1,0 +1,6 @@
+isolation_forest_model
+statistical_model
+autoencoder_model
+gan_model
+one_class_svm_model
+ensemble_model
