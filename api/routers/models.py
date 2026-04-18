@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path as PathLib
 from typing import Dict, List, Any, Optional
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Path, Body
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Path, Body, File, UploadFile
 
 from api.state import app_state
 from api.schemas import ModelInfo, ModelConfig, DataBatch, JobStatus
@@ -71,6 +71,18 @@ except ImportError:
 
 logger = logging.getLogger("api_services")
 router = APIRouter()
+
+# ---------------------------------------------------------------------------
+# Concurrency guard: at most 2 training jobs may run simultaneously.
+# Slots are acquired in the HTTP handlers and released in the background job.
+# ---------------------------------------------------------------------------
+_TRAIN_SEMAPHORE = asyncio.Semaphore(2)
+
+# Monotonic counters — safe without a lock because FastAPI runs handlers on
+# the single asyncio event-loop thread.  Incremented before any await so
+# no interleaving is possible.
+_trains_accepted_total: int = 0
+_trains_rejected_total: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +184,8 @@ async def train_model(
     Returns:
         Job status information
     """
+    global _trains_accepted_total, _trains_rejected_total
+
     logger.info(f"[DEBUG] ==================== TRAIN REQUEST ====================")
     logger.info(f"[DEBUG] Model: {model_name}")
     logger.info(f"[DEBUG] Data batch items: {len(data_batch.items)}")
@@ -180,6 +194,25 @@ async def train_model(
 
     if model_name not in app_state.models:
         raise HTTPException(status_code=404, detail=f"Model {model_name} not found")
+
+    # Non-blocking capacity check — reject immediately when both slots are taken.
+    if _TRAIN_SEMAPHORE.locked():
+        _trains_rejected_total += 1
+        logger.warning(
+            "trains_rejected_total model=%s endpoint=train total=%d",
+            model_name, _trains_rejected_total,
+        )
+        raise HTTPException(
+            status_code=429,
+            detail="Training capacity reached (max 2 concurrent jobs). Retry later.",
+        )
+
+    await _TRAIN_SEMAPHORE.acquire()
+    _trains_accepted_total += 1
+    logger.info(
+        "trains_accepted_total model=%s endpoint=train total=%d",
+        model_name, _trains_accepted_total,
+    )
 
     # Create a job ID
     job_id = f"train_{model_name}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
@@ -202,6 +235,83 @@ async def train_model(
     # Start training job in background
     background_tasks.add_task(train_model_job, model_name, data_batch.items, job_id)
 
+    return app_state.background_jobs[job_id]
+
+
+@router.post("/models/{model_name}/train-file", tags=["Models"], response_model=JobStatus)
+async def train_model_file(
+    background_tasks: BackgroundTasks,
+    model_name: str = Path(..., description="Name of the model to train"),
+    file: UploadFile = File(..., description="CSV or JSON file containing training data"),
+):
+    """
+    Train a model from an uploaded CSV or JSON file.
+
+    Accepts the same concurrency limit as the JSON-body train endpoint
+    (max 2 concurrent jobs, returns 429 when full).
+
+    CSV: first row is treated as headers; each subsequent row becomes one
+    data-point dict.  JSON: expects a JSON array of objects.
+    """
+    global _trains_accepted_total, _trains_rejected_total
+
+    if model_name not in app_state.models:
+        raise HTTPException(status_code=404, detail=f"Model {model_name} not found")
+
+    if _TRAIN_SEMAPHORE.locked():
+        _trains_rejected_total += 1
+        logger.warning(
+            "trains_rejected_total model=%s endpoint=train-file total=%d",
+            model_name, _trains_rejected_total,
+        )
+        raise HTTPException(
+            status_code=429,
+            detail="Training capacity reached (max 2 concurrent jobs). Retry later.",
+        )
+
+    # Parse uploaded file before acquiring the slot so we surface bad input
+    # cheaply, without burning a training slot.
+    content = await file.read()
+    filename = file.filename or ""
+    try:
+        if filename.endswith(".json"):
+            import json as _json
+            items: List[Dict[str, Any]] = _json.loads(content)
+            if not isinstance(items, list):
+                raise ValueError("JSON file must contain an array of objects")
+        else:
+            # Default: treat as CSV
+            import csv as _csv
+            import io as _io
+            reader = _csv.DictReader(_io.StringIO(content.decode("utf-8")))
+            items = [dict(row) for row in reader]
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Could not parse file: {exc}")
+
+    await _TRAIN_SEMAPHORE.acquire()
+    _trains_accepted_total += 1
+    logger.info(
+        "trains_accepted_total model=%s endpoint=train-file total=%d",
+        model_name, _trains_accepted_total,
+    )
+
+    job_id = f"train_{model_name}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    current_time = datetime.utcnow().isoformat()
+
+    app_state.background_jobs[job_id] = {
+        "job_id": job_id,
+        "job_type": "train_model",
+        "status": "pending",
+        "start_time": current_time,
+        "end_time": None,
+        "parameters": {"model_name": model_name, "data_count": len(items), "source": filename},
+        "result": None,
+        "progress": 0.0,
+        "created_at": current_time,
+        "updated_at": current_time,
+    }
+
+    background_tasks.add_task(train_model_job, model_name, items, job_id)
     return app_state.background_jobs[job_id]
 
 
@@ -617,3 +727,6 @@ async def train_model_job(model_name: str, data: List[Dict[str, Any]], job_id: s
                 app_state.background_jobs[job_id]["error_type"] = type(e).__name__
 
         raise
+    finally:
+        # Always release the slot so the next queued request can proceed.
+        _TRAIN_SEMAPHORE.release()
