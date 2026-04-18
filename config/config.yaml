@@ -455,6 +455,27 @@ processors:
         - MachineType
         - Vendor
  
+triage:
+  # Entity fields used to group alerts into incidents (checked in order; first non-null wins)
+  entity_keys:
+    - computerName
+    - src_ip
+    - location
+
+  # Collapse identical (entity + model) alerts that land within this window
+  dedup_window_seconds: 300
+
+  # Auto-close alerts older than this many days with no analyst interaction AND severity <= low
+  auto_close_days: 7
+
+  # Analyst reason codes for TP/FP feedback — extend freely; keep as short identifiers
+  reason_codes:
+    - true_threat
+    - expected_behavior
+    - stale_data
+    - known_false_positive
+    - investigating
+
 system:
   log_level: DEBUG
   name: Anomaly Detection System

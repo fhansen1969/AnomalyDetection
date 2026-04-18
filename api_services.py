@@ -59,6 +59,7 @@ from api.routers import (
     database,
     websocket,
     export,
+    triage,
 )
 
 # ---------------------------------------------------------------------------
@@ -94,6 +95,7 @@ app.include_router(alerts.router)
 app.include_router(database.router)
 app.include_router(websocket.router)
 app.include_router(export.router)
+app.include_router(triage.router)
 
 # ---------------------------------------------------------------------------
 # Backward-compatible exports
