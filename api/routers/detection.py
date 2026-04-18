@@ -31,6 +31,39 @@ except ImportError:
 logger = logging.getLogger("api_services")
 router = APIRouter()
 
+try:
+    from anomaly_detection.drift.feature_drift import get_drift_monitor as _get_drift_monitor
+    from anomaly_detection.drift.trigger import record_new_samples as _record_drift_samples
+    _DRIFT_AVAILABLE = True
+except ImportError:
+    _DRIFT_AVAILABLE = False
+
+
+def _observe_drift(processed_data: List[Dict[str, Any]], job_id: str) -> None:
+    """Feed the scored batch into the drift monitor. Non-blocking; never raises."""
+    if not _DRIFT_AVAILABLE:
+        return
+    try:
+        monitor = _get_drift_monitor()
+        _record_drift_samples(len(processed_data))
+        if not monitor.is_fitted():
+            return
+        verdict = monitor.update(processed_data)
+        if verdict:
+            logger.log(
+                logging.WARNING if verdict["drift_detected"] else logging.DEBUG,
+                "[drift] job=%s drift_detected=%s p_value=%.4f method=%s "
+                "n_windows_drifted=%d/%d",
+                job_id,
+                verdict["drift_detected"],
+                verdict["p_value"],
+                verdict["method"],
+                verdict["n_windows_drifted"],
+                verdict["window_size"],
+            )
+    except Exception as exc:
+        logger.debug("[drift] observe error (non-fatal): %s", exc)
+
 
 # ---------------------------------------------------------------------------
 # Routes
@@ -254,6 +287,8 @@ async def detect_anomalies_job(model_name: str, data_items: List[Dict[str, Any]]
                 processed_data = processor.process(processed_data)
                 logging.info(f"Applied feature extractor {processor_name} to data")
 
+        _observe_drift(processed_data, job_id)
+
         # Update progress
         with app_state.background_jobs_lock:
             app_state.background_jobs[job_id]["progress"] = 0.5
@@ -392,6 +427,8 @@ async def bulk_detect_anomalies_job(model_names: List[str], data_items: List[Dic
             if isinstance(processor, FeatureExtractor):
                 processed_data = processor.process(processed_data)
                 logging.info(f"Applied feature extractor {processor_name} to data")
+
+        _observe_drift(processed_data, job_id)
 
         # Run detection on each model
         all_anomalies = []
