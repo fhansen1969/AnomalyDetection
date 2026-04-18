@@ -455,6 +455,12 @@ processors:
         - MachineType
         - Vendor
  
+explainability:
+  # Set to false to skip SHAP attribution on every emitted alert (speeds up high-volume detection).
+  explain_on_detection: true
+  # Number of top features to attach per anomaly.
+  top_k: 5
+
 system:
   log_level: DEBUG
   name: Anomaly Detection System

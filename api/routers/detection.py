@@ -28,6 +28,15 @@ try:
 except ImportError:
     from api.extractors import ConcreteFeatureExtractor as FeatureExtractor
 
+try:
+    import numpy as np
+    from anomaly_detection.explainers import ShapExplainer
+    _EXPLAINER = ShapExplainer()
+    _EXPLAINER_AVAILABLE = True
+except Exception:
+    _EXPLAINER_AVAILABLE = False
+    _EXPLAINER = None
+
 logger = logging.getLogger("api_services")
 router = APIRouter()
 
@@ -266,6 +275,11 @@ async def detect_anomalies_job(model_name: str, data_items: List[Dict[str, Any]]
         else:
             anomalies = model.detect(processed_data)
 
+        # Read explainability config once before the loop.
+        _expl_cfg = (app_state.config or {}).get("explainability", {})
+        _explain_enabled = _EXPLAINER_AVAILABLE and _expl_cfg.get("explain_on_detection", True)
+        _top_k = int(_expl_cfg.get("top_k", 5))
+
         # Ensure all required fields are present in anomalies
         for anomaly in anomalies:
             if "model" not in anomaly or not anomaly["model"]:
@@ -312,6 +326,35 @@ async def detect_anomalies_job(model_name: str, data_items: List[Dict[str, Any]]
 
             if "original_data" in anomaly and "data" not in anomaly:
                 anomaly["data"] = anomaly["original_data"]
+
+            # Attach top-feature attributions (why did this anomaly fire?).
+            if _explain_enabled:
+                try:
+                    feat_names = getattr(model, "training_feature_names", None)
+                    # For Ensemble, fall back to the first base model with feature names.
+                    if not feat_names and hasattr(model, "_model_instances"):
+                        for _bm in model._model_instances.values():
+                            feat_names = getattr(_bm, "training_feature_names", None)
+                            if feat_names:
+                                break
+                    if feat_names:
+                        orig = anomaly.get("original_data", {})
+                        feat_dict = orig.get("features", {}) if isinstance(orig, dict) else {}
+                        fv = np.array(
+                            [float(feat_dict.get(fn, 0.0)) for fn in feat_names],
+                            dtype=np.float64,
+                        )
+                        pairs = _EXPLAINER.explain(model, fv, feat_names, top_k=_top_k)
+                        anomaly["top_features"] = [
+                            {"name": n, "contribution": c} for n, c in pairs
+                        ]
+                    else:
+                        anomaly["top_features"] = None
+                except Exception as _exc:
+                    logging.warning(
+                        "Explainer failed for anomaly %s: %s", anomaly.get("id"), _exc
+                    )
+                    anomaly["top_features"] = None
 
         # Store detected anomalies
         if app_state.storage_manager and anomalies:

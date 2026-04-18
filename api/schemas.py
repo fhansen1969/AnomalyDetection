@@ -32,6 +32,7 @@ class AnomalyModel(BaseModel):
     severity: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    top_features: Optional[List[Dict[str, Any]]] = None
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -46,7 +47,11 @@ class AnomalyModel(BaseModel):
                 "details": {"anomaly_reason": "CPU usage exceeds normal pattern"},
                 "features": [],
                 "severity": "High",
-                "status": "new"
+                "status": "new",
+                "top_features": [
+                    {"name": "cpu_usage", "contribution": 0.42},
+                    {"name": "memory_usage", "contribution": 0.31}
+                ]
             }
         }
     )
