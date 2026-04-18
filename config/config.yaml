@@ -444,16 +444,24 @@ processors:
         - siteName
         - domain
         - groupName
-        - agentVersion
-        - appsVulnerabilityStatus
         - scanStatus
         - mitigationMode
         - rangerStatus
-        - computerName
         # Solarwinds categorical fields
         - Caption
         - MachineType
         - Vendor
+      # Version strings parsed into (major, minor, patch, build) numeric features
+      version_fields:
+        - agentVersion
+      # High-cardinality fields replaced with observed frequency count
+      frequency_encoded_fields:
+        - computerName
+      # Known-ordered categoricals mapped to explicit integer severity levels
+      ordered_enum_fields:
+        appsVulnerabilityStatus:
+          up_to_date: 0
+          patch_required: 1
  
 system:
   log_level: DEBUG
