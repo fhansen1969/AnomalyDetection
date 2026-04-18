@@ -540,7 +540,13 @@ class ModelFactory:
                 
             elif model_name == "ensemble":
                 model = self._create_ensemble_model(model_config)
-                
+
+            elif model_name == "ecod":
+                model = self._create_ecod_model(model_config)
+
+            elif model_name == "extended_iforest":
+                model = self._create_extended_iforest_model(model_config)
+
             else:
                 self.logger.warning(f"Unknown model type: {model_name}")
                 return None
@@ -631,6 +637,26 @@ class ModelFactory:
             return EnsembleModel("ensemble", config, self.storage_manager)
         except ImportError as e:
             self.logger.error(f"Could not import EnsembleModel: {e}")
+            return None
+
+    def _create_ecod_model(self, config: Dict[str, Any]) -> Optional[AnomalyDetectionModel]:
+        """Create ECOD model."""
+        try:
+            from anomaly_detection.models.ecod import ECODModel
+            self.logger.info("Using ECODModel")
+            return ECODModel("ecod", config, self.storage_manager)
+        except ImportError as e:
+            self.logger.error(f"Could not import ECODModel: {e}")
+            return None
+
+    def _create_extended_iforest_model(self, config: Dict[str, Any]) -> Optional[AnomalyDetectionModel]:
+        """Create Extended Isolation Forest model."""
+        try:
+            from anomaly_detection.models.extended_iforest import ExtendedIsolationForestModel
+            self.logger.info("Using ExtendedIsolationForestModel")
+            return ExtendedIsolationForestModel("extended_iforest", config, self.storage_manager)
+        except ImportError as e:
+            self.logger.error(f"Could not import ExtendedIsolationForestModel: {e}")
             return None
     
     # Helper methods for model management
