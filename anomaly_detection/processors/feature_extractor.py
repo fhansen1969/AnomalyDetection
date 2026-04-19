@@ -214,6 +214,25 @@ class TextEmbedder:
         return np.array(embeddings, dtype=np.float32)
 
 
+class FrequencyEncoder:
+    """Replaces a categorical value with its observed count from training data."""
+
+    def __init__(self):
+        self.frequency_maps: Dict[str, Dict[str, int]] = {}
+
+    def fit(self, records: List[Dict[str, Any]], fields: List[str]) -> None:
+        for field in fields:
+            counts: Dict[str, int] = {}
+            for record in records:
+                if field in record:
+                    val = str(record[field])
+                    counts[val] = counts.get(val, 0) + 1
+            self.frequency_maps[field] = counts
+
+    def transform(self, field: str, value: str) -> float:
+        return float(self.frequency_maps.get(field, {}).get(str(value), 0))
+
+
 class FeatureExtractor(Processor):
     """
     Processor for feature extraction with proper imputation and embeddings.
@@ -244,6 +263,9 @@ class FeatureExtractor(Processor):
         self.boolean_fields = set(config.get("boolean_fields", []))
         self.text_fields = set(config.get("text_fields", []))
         self.timestamp_field = config.get("timestamp_field", "timestamp")
+        self.version_fields = set(config.get("version_fields", []))
+        self.frequency_encoded_fields = list(config.get("frequency_encoded_fields", []))
+        self.ordered_enum_fields: Dict[str, Dict[str, int]] = config.get("ordered_enum_fields", {})
         
         # Imputation configuration
         self.imputation_strategy = config.get("imputation_strategy", "median")
@@ -259,6 +281,7 @@ class FeatureExtractor(Processor):
         self.categorical_encoding = config.get("categorical_encoding", "label")
         self.categorical_mappings = {}
         self.categorical_values = defaultdict(set)
+        self.frequency_encoder = FrequencyEncoder()
         
         # Feature alignment
         self.fitted_feature_names = None
@@ -291,7 +314,14 @@ class FeatureExtractor(Processor):
             Self for chaining
         """
         self.logger.info(f"Fitting feature extractor on {len(data)} samples")
-        
+
+        # Fit frequency encoder (needs a full pass over all raw records)
+        if self.frequency_encoded_fields:
+            all_raw_records = []
+            for item in data:
+                all_raw_records.extend(self._get_records_from_item(item))
+            self.frequency_encoder.fit(all_raw_records, self.frequency_encoded_fields)
+
         # Extract features without imputation to learn structure
         temp_features = []
         for item in data:
@@ -498,7 +528,33 @@ class FeatureExtractor(Processor):
         if self.extract_temporal_features and self.timestamp_field in record:
             temporal_features = self._extract_temporal_features(record[self.timestamp_field])
             features.update(temporal_features)
-        
+
+        # 6. Version fields — parsed into (major, minor, patch, build) numeric components
+        for field in self.version_fields:
+            raw = str(record[field]) if field in record and record[field] is not None else ""
+            parts = raw.split(".") if raw else []
+            for idx, component in enumerate(["major", "minor", "patch", "build"]):
+                feat_name = f"version_{field}_{component}"
+                try:
+                    features[feat_name] = float(parts[idx]) if idx < len(parts) else np.nan
+                except (ValueError, TypeError):
+                    features[feat_name] = np.nan
+
+        # 7. Frequency-encoded fields — value replaced by its training-set count
+        for field in self.frequency_encoded_fields:
+            if field in record and record[field] is not None:
+                features[f"freq_{field}"] = self.frequency_encoder.transform(field, str(record[field]))
+            else:
+                features[f"freq_{field}"] = np.nan
+
+        # 8. Ordered-enum fields — hand-mapped to explicit integer severity levels
+        for field, mapping in self.ordered_enum_fields.items():
+            if field in record and record[field] is not None:
+                val = str(record[field])
+                features[f"enum_{field}"] = float(mapping[val]) if val in mapping else np.nan
+            else:
+                features[f"enum_{field}"] = np.nan
+
         return features
     
     def _extract_temporal_features(self, timestamp_value: Any) -> Dict[str, float]:
@@ -596,6 +652,7 @@ class FeatureExtractor(Processor):
             "fitted_feature_names": self.fitted_feature_names,
             "categorical_mappings": self.categorical_mappings,
             "categorical_values": {k: list(v) for k, v in self.categorical_values.items()},
+            "frequency_maps": self.frequency_encoder.frequency_maps,
             "is_fitted": self.is_fitted,
             "config": self.config
         }
@@ -615,6 +672,7 @@ class FeatureExtractor(Processor):
         self.categorical_values = defaultdict(set, {
             k: set(v) for k, v in state.get("categorical_values", {}).items()
         })
+        self.frequency_encoder.frequency_maps = state.get("frequency_maps", {})
         self.is_fitted = state.get("is_fitted", False)
         
         self.logger.info(f"Loaded feature extractor state from {filepath}")

@@ -473,6 +473,17 @@ processors:
       # data source (nagiosxi.yaml).
       # The SourceRegistry auto-detects the source from marker fields
       # and applies the correct schema.
+      # Version strings parsed into (major, minor, patch, build) numeric features
+      version_fields:
+        - agentVersion
+      # High-cardinality fields replaced with observed frequency count
+      frequency_encoded_fields:
+        - computerName
+      # Known-ordered categoricals mapped to explicit integer severity levels
+      ordered_enum_fields:
+        appsVulnerabilityStatus:
+          up_to_date: 0
+          patch_required: 1
  
 anomaly_retention:
   max_age_days: 30
