@@ -552,6 +552,12 @@ proactive:
   # Only generate proactive alerts for metrics with score above this
   min_alert_severity: medium  # low, medium, high, critical
 
+explainability:
+  # Set to false to skip SHAP attribution on every emitted alert (speeds up high-volume detection).
+  explain_on_detection: true
+  # Number of top features to attach per anomaly.
+  top_k: 5
+
 # ── Service Ports (single source of truth) ──────────────────────
 # All scripts, the API server, and shell utilities read from here.
 # The API port serves both the REST API and the production UI (same process).

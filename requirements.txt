@@ -49,7 +49,10 @@ seaborn>=0.13.0
 PyYAML>=6.0
 
 # ── Explainability ──────────────────────────────────────────────
-shap>=0.42.0
+shap>=0.45                # Wave 1 SHAP attribution
+
+# ── Drift & Adaptive Retraining ─────────────────────────────────
+# (Wave 2 — added when drift branch is merged)
 
 # ── Secrets Management (optional - for Kubernetes deployments) ──
 kubernetes>=24.0.0
