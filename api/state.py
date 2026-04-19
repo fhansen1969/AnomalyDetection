@@ -22,6 +22,10 @@ class AppState:
         self.last_training_data: Dict[str, Any] = {}
         self.websocket_connections: Dict[str, Any] = {}
         self.system_components: Dict[str, Any] = {}
+        # Keyed by model_name → ScoreCalibrator (or None when load failed).
+        # Populated lazily on first detection; None sentinel prevents repeated
+        # filesystem probes when no calibrator has been fitted yet.
+        self.calibrators: Dict[str, Any] = {}
 
 
 # Singleton instance — imported by all routers

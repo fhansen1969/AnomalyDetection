@@ -30,6 +30,11 @@ class AnomalyModel(BaseModel):
     dst_ip: Optional[str] = None
     status: str = "new"
     severity: Optional[str] = None
+    # Calibration fields — populated by ScoreCalibrator after detection.
+    # Coexist with `severity` (raw-score-derived); these are probability-based.
+    ecdf_rank: Optional[float] = None
+    calibrated_prob: Optional[float] = None
+    severity_tier: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     top_features: Optional[List[Dict[str, Any]]] = None

@@ -8,6 +8,8 @@ from typing import Dict, List, Any, Optional
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Path, Body
 
+from pathlib import Path
+
 from api.state import app_state
 from api.schemas import DetectionRequest, BulkDetectionRequest, DataBatch, JobStatus
 from api.helpers import store_detection_results
@@ -39,6 +41,53 @@ except Exception:
 
 logger = logging.getLogger("api_services")
 router = APIRouter()
+
+_CALIBRATORS_DIR = Path("storage/calibrators")
+
+
+def _load_calibrator(model_name: str):
+    """
+    Lazy-load a ScoreCalibrator for *model_name* from disk, caching in app_state.
+
+    Returns the calibrator, or None when none has been fitted yet (cold start).
+    The None sentinel is stored in app_state.calibrators so the filesystem is
+    only probed once per model per process lifetime.
+    """
+    if model_name in app_state.calibrators:
+        return app_state.calibrators[model_name]
+
+    cal_path = _CALIBRATORS_DIR / f"{model_name}.joblib"
+    if cal_path.exists():
+        try:
+            from anomaly_detection.calibration.score_calibrator import ScoreCalibrator
+
+            cal = ScoreCalibrator.load(str(cal_path))
+            app_state.calibrators[model_name] = cal
+            logging.info("Loaded calibrator for %s from %s", model_name, cal_path)
+            return cal
+        except Exception as exc:
+            logging.warning("Could not load calibrator for %s: %s", model_name, exc)
+
+    # Mark missing so we don't probe the filesystem on every subsequent call.
+    app_state.calibrators[model_name] = None
+    return None
+
+
+def _stamp_calibrated_scores(anomaly: Dict[str, Any], model_name: str) -> None:
+    """Attach ecdf_rank, calibrated_prob, and severity_tier to *anomaly* in-place.
+
+    No-ops silently when no calibrator exists (cold start).
+    """
+    cal = _load_calibrator(model_name)
+    if cal is None:
+        return
+    try:
+        result = cal.transform(float(anomaly.get("score", 0.0)))
+        anomaly["ecdf_rank"] = result["ecdf_rank"]
+        anomaly["calibrated_prob"] = result["calibrated_prob"]
+        anomaly["severity_tier"] = result["severity_tier"]
+    except Exception as exc:
+        logging.warning("Calibration stamping failed for %s: %s", model_name, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -356,6 +405,8 @@ async def detect_anomalies_job(model_name: str, data_items: List[Dict[str, Any]]
                     )
                     anomaly["top_features"] = None
 
+            _stamp_calibrated_scores(anomaly, model_name)
+
         # Store detected anomalies
         if app_state.storage_manager and anomalies:
             await asyncio.to_thread(lambda: app_state.storage_manager.store_anomalies(anomalies))
@@ -512,6 +563,8 @@ async def bulk_detect_anomalies_job(model_names: List[str], data_items: List[Dic
 
                     if "original_data" in anomaly and "data" not in anomaly:
                         anomaly["data"] = anomaly["original_data"]
+
+                    _stamp_calibrated_scores(anomaly, model_name)
 
                 all_anomalies.extend(model_anomalies)
                 logging.info(f"Detected {len(model_anomalies)} anomalies with model {model_name}")

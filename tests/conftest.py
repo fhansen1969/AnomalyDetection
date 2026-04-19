@@ -1,21 +1,18 @@
 """
-Pytest configuration for deep-model unit tests.
+Pytest configuration shared across the tests/ package.
 
-anomaly_detection/models/__init__.py eagerly imports AutoencoderModel and
-EnsembleModel (both pull in PyTorch), plus anomaly_detection/__init__.py
-pulls in AgentManager (langchain/gRPC). These trigger an abseil mutex
-deadlock on torch 1.13 / macOS ARM when langsmith's gRPC also initialises.
+Pre-populates sys.modules with stubs so that anomaly_detection's __init__.py
+can be imported without triggering gRPC/mutex deadlocks or requiring live
+infrastructure (databases, message brokers, etc.).
 
-We stub those sub-modules with MagicMock BEFORE collection so that the
-deep-model tests can run without paying that cost.  The stubs preserve
-__path__ so Python can still descend into real sub-module files.
-
-Modules we need to work (deep_iforest, deep_sad_model, deep_sad/) are
-intentionally left un-stubbed so they load from disk normally.
+NOTE: torch is intentionally NOT stubbed — deep-model tests need real torch.
+Packages that need real __path__ navigation (anomaly_detection sub-packages)
+use _pkg_stub to preserve file-system discovery of un-stubbed sub-modules.
 """
 
 import os
 import sys
+import types
 import pathlib
 from unittest.mock import MagicMock
 
@@ -27,15 +24,37 @@ os.environ.setdefault("LANGSMITH_API_KEY", "disabled")
 _root = pathlib.Path(__file__).parent.parent
 
 
+class _AutoMockModule(types.ModuleType):
+    """Stub module returning MagicMock for any undefined attribute access.
+
+    Also satisfies importlib.util.find_spec checks (needs __spec__ and __path__).
+    """
+
+    def __init__(self, name: str) -> None:
+        super().__init__(name)
+        self.__spec__ = types.SimpleNamespace(
+            name=name, submodule_search_locations=[]
+        )
+        self.__path__: list = []
+        self.__package__ = name
+
+    def __getattr__(self, item: str):
+        mock = MagicMock(name=f"{self.__name__}.{item}")
+        setattr(self, item, mock)
+        return mock
+
+
 def _pkg_stub(rel_path: str) -> MagicMock:
-    """MagicMock stub with __path__ pointing at the real directory."""
+    """MagicMock stub with __path__ pointing at the real directory on disk."""
     stub = MagicMock()
     stub.__path__ = [str(_root / rel_path)]
     stub.__package__ = rel_path.replace("/", ".")
     return stub
 
 
-# Stub gRPC-pulling framework packages (no torch — tests need real torch)
+# Stub gRPC-pulling framework packages.
+# torch is intentionally NOT stubbed — deep-model tests (test_deep_iforest,
+# test_deep_sad) require real torch to run.
 _framework_stubs = [
     "langgraph",
     "langchain_core",
@@ -46,7 +65,23 @@ _framework_stubs = [
 ]
 for _name in _framework_stubs:
     if _name not in sys.modules:
-        sys.modules[_name] = MagicMock()
+        sys.modules[_name] = _AutoMockModule(_name)
+
+# Infrastructure stubs — psycopg2, kafka, elasticsearch are not installed
+# in the test environment; mock them so unit tests don't import-fail.
+_infra_stubs = [
+    "psycopg2",
+    "psycopg2.pool",
+    "psycopg2.extras",
+    "kafka",
+    "kafka.consumer",
+    "kafka.consumer.consumer_record",
+    "kafka.errors",
+    "elasticsearch",
+]
+for _name in _infra_stubs:
+    if _name not in sys.modules:
+        sys.modules[_name] = _AutoMockModule(_name)
 
 # Stub heavy anomaly_detection sub-packages not under test.
 # Give models a real __path__ so deep_iforest.py / deep_sad_model.py are found.
