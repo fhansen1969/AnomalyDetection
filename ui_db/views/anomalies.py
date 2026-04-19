@@ -34,6 +34,7 @@ from services.data_service import (
 
 from services.database import execute_query
 from components.anomaly_origin_details import render_anomaly_origin_details
+from components.triage import render_group_view, severity_badge, _effective_severity
 
 # Set up logging
 logging.basicConfig(
@@ -1991,42 +1992,101 @@ def call_detection_api():
         return False, 0
 
 
+def _load_triage_config():
+    """Load triage settings from config.yaml, falling back to defaults."""
+    try:
+        import yaml, os
+        cfg_path = os.path.join(os.path.dirname(__file__), "..", "..", "config", "config.yaml")
+        with open(os.path.abspath(cfg_path)) as f:
+            cfg = yaml.safe_load(f)
+        triage = cfg.get("triage", {})
+        return {
+            "entity_keys": triage.get("entity_keys", ["computerName"]),
+            "dedup_window_seconds": int(triage.get("dedup_window_seconds", 300)),
+            "auto_close_days": int(triage.get("auto_close_days", 7)),
+            "reason_codes": triage.get("reason_codes", []),
+        }
+    except Exception:
+        return {
+            "entity_keys": ["computerName"],
+            "dedup_window_seconds": 300,
+            "auto_close_days": 7,
+            "reason_codes": [],
+        }
+
+
 def render():
     """Render the anomalies page with modern UI."""
     # Page header - simplified to avoid parsing issues
     st.markdown("# 🔍 Anomaly Analysis Center")
     st.markdown("---")
-    
+
+    triage_cfg = _load_triage_config()
+
     # Load anomalies
     with st.spinner("Loading anomalies..."):
         if 'anomalies_data' not in st.session_state or st.session_state.get('refresh_anomalies', False):
             if st.session_state.get('refresh_anomalies', False):
                 st.session_state.refresh_anomalies = False
             st.session_state.anomalies_data = get_anomalies(limit=1000, min_score=0.0)
-    
+
     anomalies = st.session_state.anomalies_data or []
-    
+
     # Action buttons
     render_action_buttons()
-    
+
     # Summary statistics
     render_summary_statistics(anomalies)
-    
+
     # Filters
     filtered_anomalies = render_filters(anomalies)
-    
+
     # Display mode
     display_mode = render_display_options()
-    
+
     # Anomaly display
-    if display_mode == "Cards":
+    if display_mode == "Groups":
+        api_url = get_api_url()
+        # Sidebar-style config for the group view
+        with st.expander("Group view settings", expanded=False):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                entity_keys_input = st.text_input(
+                    "Entity keys (comma-separated)",
+                    value=", ".join(triage_cfg["entity_keys"]),
+                )
+                entity_keys = [k.strip() for k in entity_keys_input.split(",") if k.strip()]
+            with col2:
+                dedup_secs = st.number_input(
+                    "Dedup window (seconds)",
+                    min_value=0,
+                    max_value=3600,
+                    value=triage_cfg["dedup_window_seconds"],
+                )
+            with col3:
+                auto_close_enabled = st.checkbox("Auto-close stale low alerts", value=False)
+                auto_close_days = st.number_input(
+                    "Auto-close after (days)",
+                    min_value=1,
+                    max_value=90,
+                    value=triage_cfg["auto_close_days"],
+                )
+        render_group_view(
+            filtered_anomalies,
+            api_url=api_url,
+            entity_keys=entity_keys,
+            dedup_window_seconds=dedup_secs,
+            auto_close_days=auto_close_days,
+            auto_close_enabled=auto_close_enabled,
+        )
+    elif display_mode == "Cards":
         render_anomaly_cards(filtered_anomalies)
     else:
         render_anomaly_table(filtered_anomalies)
-    
+
     # Analyzer
     render_anomaly_analyzer(filtered_anomalies)
-        
+
     # Visualizations
     render_visualizations(filtered_anomalies)
 
@@ -2252,7 +2312,7 @@ def render_display_options():
     """Render display options."""
     col1, col2, col3 = st.columns([1, 2, 4])
     with col1:
-        return st.radio("View", ["Table", "Cards"], horizontal=True)
+        return st.radio("View", ["Groups", "Table", "Cards"], horizontal=True)
 
 
 def render_anomaly_cards(anomalies):
@@ -2287,7 +2347,8 @@ def render_anomaly_cards(anomalies):
 def render_single_card(anomaly):
     """Render a single anomaly card."""
     anomaly_id = anomaly.get('id', 'Unknown')
-    severity = get_anomaly_severity(anomaly)
+    # Prefer severity_tier (Wave-1 calibration) if present
+    severity = _effective_severity(anomaly) if anomaly.get("severity_tier") else get_anomaly_severity(anomaly)
     score = float(anomaly.get('score', 0))
     model = anomaly.get('model', 'Unknown')
     status = anomaly.get('status', 'new')
