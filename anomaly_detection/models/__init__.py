@@ -8,6 +8,8 @@ from anomaly_detection.models.ensemble import EnsembleModel
 from anomaly_detection.models.trend_model import TrendModel
 from anomaly_detection.models.deep_iforest import DeepIsolationForestModel
 from anomaly_detection.models.deep_sad_model import DeepSADModel
+from anomaly_detection.models.ecod import ECODModel
+from anomaly_detection.models.extended_iforest import ExtendedIsolationForestModel
 
 __all__ = [
     'AnomalyDetectionModel',
@@ -17,4 +19,6 @@ __all__ = [
     'EnsembleModel',
     'DeepIsolationForestModel',
     'DeepSADModel',
+    'ECODModel',
+    'ExtendedIsolationForestModel',
 ]

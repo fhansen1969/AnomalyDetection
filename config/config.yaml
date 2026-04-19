@@ -385,6 +385,8 @@ models:
     - autoencoder
     - gan
     - one_class_svm
+    - ecod
+    - extended_iforest
     - ensemble
   isolation_forest:
     contamination: 0.01  # Conservative — only flag strong outliers
@@ -418,6 +420,15 @@ models:
     window_size: 10
     threshold_multiplier: 2.0
     threshold: 0.75
+  ecod:
+    contamination: 0.01
+    threshold: 0.7
+  extended_iforest:
+    n_estimators: 100
+    contamination: 0.01
+    random_state: 42
+    # extension_level defaults to n_features - 1 (full EIF) at train time
+    threshold: 0.7
   ensemble:
     # Require minimum 2 models to agree before ensemble flags an anomaly
     min_models_agree: 2
@@ -427,12 +438,16 @@ models:
       autoencoder_model: 0.5
       gan_model: 0.3
       one_class_svm_model: 0.5
+      ecod: 0.5
+      extended_iforest: 0.5
     models_to_use:
       - isolation_forest_model
       - statistical_model
       - autoencoder_model
       - gan_model
       - one_class_svm_model
+      - ecod
+      - extended_iforest
     threshold: 0.75
   # Heavier deep models — disabled by default; add to 'enabled' list to activate.
   # Requires deepod>=0.4 (deep_iforest) and torch>=2.0 (deep_sad).
