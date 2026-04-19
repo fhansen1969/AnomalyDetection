@@ -499,7 +499,7 @@ processors:
         appsVulnerabilityStatus:
           up_to_date: 0
           patch_required: 1
- 
+
 anomaly_retention:
   max_age_days: 30
   keep_confirmed: true
@@ -585,6 +585,26 @@ logs:
   retention_days: 14         # delete logs older than this
   max_file_size_mb: 100      # rotate any single log file larger than this
   archive_retention_days: 30 # how long to keep compressed archives
+
+drift:
+  enabled: true
+  feature_drift:
+    method: ks                  # "ks" (KSDrift, cheaper) or "mmd" (MMDDrift)
+    persist_path: storage/drift
+    p_value_threshold: 0.05
+    sliding_window_size: 10     # rolling window of drift verdicts
+    drift_window_min_count: 3   # trigger if >= this many recent windows show drift
+    max_reference_rows: 10000   # cap reference sample (reservoir-sampled)
+    n_permutations: 200         # only used for MMD method
+  performance_drift:
+    adwin_delta: 0.002          # ADWIN sensitivity; lower = more sensitive
+  trigger:
+    cooldown_days: 7            # minimum gap between retrains
+    min_new_samples: 500        # don't retrain on too little new data
+    cadence_days: 30            # force retrain if this many days have elapsed
+  categorical_psi:
+    threshold_moderate: 0.1     # PSI >= 0.1 → moderate shift
+    threshold_major: 0.25       # PSI >= 0.25 → major shift (drift_detected=True)
 
 system:
   log_level: INFO              # use DEBUG only for troubleshooting
