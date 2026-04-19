@@ -401,6 +401,28 @@ models:
       - gan_model
       - one_class_svm_model
     threshold: 0.5
+  # Heavier deep models — disabled by default; enable by adding to 'enabled' list
+  deep_iforest:
+    enabled: false
+    n_ensemble: 6
+    hidden_dims: "64"    # comma-separated MLP widths per DeepOD API, e.g. "128,64"
+    rep_dim: 64
+    epochs: 100
+    batch_size: 64
+    lr: 0.001
+    threshold: 0.7
+    # device: cpu  # uncomment to force CPU even when CUDA is available
+  deep_sad:
+    enabled: false
+    hidden_dims: [32, 16]
+    rep_dim: 16
+    lr: 0.001
+    n_epochs: 50
+    batch_size: 64
+    weight_decay: 0.000001
+    eps: 0.000001
+    threshold: 0.7
+    # device: cpu  # uncomment to force CPU even when CUDA is available
  
 processors:
   normalizers:
