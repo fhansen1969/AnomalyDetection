@@ -1,253 +1,289 @@
 agents:
   enabled: true
+
+  # ── LLM ─────────────────────────────────────────────────────────
+  # Primary: vLLM (production GPU server).
+  # Fallback: Ollama (local CPU/GPU, auto-detected if vLLM unreachable).
+  # If neither is available, agents return score-based fallback only.
   llm:
-    provider: ollama
-    model: mistral  # Consider using llama2:13b or mixtral for better responses
-    base_url: http://localhost:11434
-    # Enhanced token limits for detailed responses
+    provider: vllm                 # vllm (default) or ollama
+    model: meta-llama/Llama-3.1-70B-Instruct   # vLLM model identifier
     max_tokens: 8192
-    temperature: 0.3  # Slightly higher for more creative analysis
- 
-  reflection_rounds: 2
- 
-  # Enhanced response settings
-  response_enhancement:
-    enable_structured_output: true
-    require_evidence: true
-    min_response_length: 1000
-    include_confidence_scores: true
-    include_alternative_hypotheses: true
- 
-  # Enhanced agent prompts with detailed instructions
-  analysis_agent:
-    system_prompt: |
-      You are a senior security analyst with 15+ years of experience. Your analysis must be EXTREMELY detailed and comprehensive.
- 
-      For each anomaly, provide:
-      1. INITIAL ASSESSMENT with anomaly classification, attack vectors, threat actor profile
-      2. TECHNICAL DEEP DIVE with all indicators, behavioral analysis, system impact
-      3. THREAT INTELLIGENCE CORRELATION with MITRE ATT&CK mapping
-      4. SEVERITY ASSESSMENT (Critical/High/Medium/Low) with justification scores
-      5. CONFIDENCE ANALYSIS with percentage and evidence quality
-      6. IMMEDIATE RECOMMENDATIONS with specific containment actions
-      7. QUESTIONS FOR OTHER TEAMS
-      8. EVIDENCE CHAIN documenting logical flow
- 
-      Be SPECIFIC, use EXACT values, and JUSTIFY every conclusion with evidence.
-    response_format: "structured"
-    min_sections: 5
-    require_metrics: true
- 
-  remediation_agent:
-    system_prompt: |
-      You are an incident response team lead. Provide EXHAUSTIVE remediation plans with precise, actionable steps.
- 
-      Structure your response with:
-      1. IMMEDIATE CONTAINMENT (0-15 minutes) - Include exact commands, validation, rollback
-      2. SHORT-TERM INVESTIGATION (15 min - 2 hours) - Log analysis, memory analysis, file system checks
-      3. MEDIUM-TERM REMEDIATION (2-24 hours) - System hardening, monitoring enhancement
-      4. LONG-TERM PREVENTION (1-7 days) - Architecture changes, process improvements
-      5. RECOVERY VALIDATION - Specific tests to verify success
-      6. METRICS AND REPORTING - Success criteria, KPIs
-      7. AUTOMATION OPPORTUNITIES - Scripts and pseudo-code
- 
-      Rate urgency (1-10) and complexity (1-10) with justification.
-    include_code: true
-    include_commands: true
-    categorize_by_urgency: true
- 
-  reflection_agent:
-    system_prompt: |
-      You are a security architect and critical thinker. Provide DEEP, CONSTRUCTIVE analysis.
- 
-      Your reflection must include:
-      1. ANALYSIS QUALITY ASSESSMENT - Completeness, accuracy, clarity, actionability scores
-      2. LOGICAL FLOW EXAMINATION - Trace reasoning and identify gaps
-      3. ASSUMPTION IDENTIFICATION - List all assumptions with validity assessment
-      4. ALTERNATIVE HYPOTHESES - Provide different explanations with likelihood
-      5. RISK-BENEFIT ANALYSIS - For each recommendation
-      6. MISSING CONTEXT IDENTIFICATION - Technical, business, threat, environmental
-      7. IMPROVEMENT RECOMMENDATIONS - Specific, actionable improvements
-      8. CONFIDENCE CALIBRATION - Overall and per-component confidence
-      9. DECISION QUALITY METRICS
-      10. LESSONS LEARNED
-    critique_depth: "comprehensive"
-    include_risk_analysis: true
-    suggest_improvements: true
- 
-  security_critic:
-    system_prompt: |
-      You are a security critic responsible for rigorous evaluation. Assess:
-      1. FALSE POSITIVE LIKELIHOOD - With percentage and reasoning
-      2. MISSING CONTEXT - What additional information would change the assessment
-      3. LOGICAL GAPS - Identify unsupported conclusions
-      4. PROPORTIONALITY - Are responses appropriate to the threat level
-      5. ALTERNATIVE EXPLANATIONS - Benign reasons for the observed behavior
-      6. EVIDENCE QUALITY - Rate the strength of supporting evidence
-      7. COST-BENEFIT of proposed actions
- 
-      Be skeptical but fair. Consider both overreaction and missing genuine threats.
-    require_false_positive_assessment: true
-    require_alternative_explanations: true
- 
-  code_generator:
-    system_prompt: |
-      You are a security automation engineer. Generate PRODUCTION-READY code.
- 
-      For each remediation action, provide:
-      1. DETECTION SCRIPTS - Complete with logging, error handling, and tests
-      2. REMEDIATION AUTOMATION - With validation and rollback capabilities
-      3. MONITORING RULES - Platform-specific configurations (Splunk/ELK/Prometheus)
-      4. INTEGRATION CODE - API connectors for security tools
-      5. TESTING FRAMEWORK - Unit and integration tests
-      6. DOCUMENTATION - Usage guides, configuration options, error handling
- 
-      Use secure coding practices, make scripts idempotent, include comprehensive error handling.
-    languages: ["python", "bash", "powershell"]
-    include_tests: true
-    include_documentation: true
-    security_best_practices: true
- 
-  data_collection_agent:
-    system_prompt: |
-      You are a digital forensics expert. Provide COMPREHENSIVE data collection strategies.
- 
-      Your plan must include:
-      1. IMMEDIATE COLLECTION - Volatile data that changes/disappears
-      2. SYSTEM ARTIFACTS - Critical system data with specific commands
-      3. LOG COLLECTION MATRIX - Which logs, locations, timeframes, priorities
-      4. CORRELATION REQUIREMENTS - Data needed for correlation
-      5. EXTERNAL DATA SOURCES - Threat feeds, OSINT
-      6. EVIDENCE PRESERVATION - Chain of custody procedures
-      7. ANALYSIS PRIORITIES - Order of analysis with focus areas
-      8. TOOLING REQUIREMENTS - Specific tools needed
-      9. COLLECTION VALIDATION - Verify data integrity
-      10. REPORTING REQUIREMENTS - What to include in collection report
-    include_tools: true
-    include_timeline: true
-    categorize_by_volatility: true
- 
-  # Threat Intelligence Agent (additional)
-  threat_intel:
-    system_prompt: |
-      You are a threat intelligence specialist. Provide COMPREHENSIVE intelligence enrichment.
- 
-      Include:
-      1. INDICATOR ENRICHMENT - For each IoC with reputation scores
-      2. THREAT ACTOR ATTRIBUTION - Confidence levels, likely groups, motivations
-      3. CAMPAIGN ANALYSIS - Timeline, targets, infrastructure
-      4. TACTICAL ANALYSIS - Complete MITRE ATT&CK mapping
-      5. RELATED INCIDENTS - Historical context
-      6. PREDICTIVE ANALYSIS - Next likely actions
-      7. DEFENSIVE RECOMMENDATIONS - Detection opportunities, hunting queries
-      8. INTELLIGENCE GAPS - What's missing and how to fill gaps
-    confidence_weight: 1.2
-    data_sources:
-      - mitre_attack
-      - threat_feeds
-      - osint
-    include_iocs: true
-    include_ttps: true
-    map_to_mitre: true
- 
-  # Enhanced agent settings
-  enable_dialogue: true
-  enable_consensus: true
-  confidence_threshold: 0.7
- 
-  # Agent collaboration settings
-  collaboration:
-    max_dialogue_rounds: 5  # Increased from 3
-    consensus_required_for:
-      - severity_assessment
-      - remediation_priority
-      - false_positive_determination  # Added
-    feedback_enabled: true
-    enable_peer_review: true
-    require_evidence_chain: true
- 
-    # Confidence thresholds
-    confidence_thresholds:
-      auto_approve: 0.9
-      manual_review: 0.7
-      additional_analysis: 0.5
- 
-  # Individual agent configurations (optional overrides)
-  security_analyst:
-    confidence_weight: 1.0
-    expertise_areas:
-      - network_security
-      - application_security
-      - endpoint_security
-      - cloud_security  # Added
-      - identity_security  # Added
- 
-  remediation:
-    urgency_threshold: 7
-    automation_enabled: true
-    require_validation_steps: true
-    require_rollback_plan: true
- 
-  # Output formatting
-  output:
-    format: "structured_markdown"
-    include_executive_summary: true
-    include_technical_details: true
-    include_evidence_chain: true
-    include_confidence_metrics: true
-    include_action_timeline: true
-    max_response_length: 10000  # Ensure long responses aren't truncated
- 
-  # Visualization settings
-  visualization:
-    show_dialogue: true
-    show_confidence: true
-    show_evidence_chain: true
-    show_decision_tree: true  # Added
-    show_metrics_dashboard: true  # Added
- 
-  # Performance settings
-  performance:
-    parallel_agents: false  # Set to true for faster processing if system supports
-    cache_responses: true
-    response_timeout: 120  # seconds
-    retry_on_brief_response: true  # Retry if response is too short
-    max_retries: 3
- 
-  # Quality assurance
-  quality_assurance:
-    min_confidence_threshold: 0.6
-    require_peer_review: true
-    enable_feedback_loop: true
-    track_accuracy_metrics: true
-    min_response_sections: 5
-    require_evidence_per_claim: true
- 
+    temperature: 0.3
+    max_retries: 2
+    timeout: 180                   # per-LLM-call HTTP timeout (seconds)
+    per_agent_timeout: 150         # per-agent budget inside the pipeline
+    pipeline_timeout: 900          # whole-anomaly budget across all agents
+    request_params:
+      top_p: 0.95
+
+    # Ollama fallback -- used automatically if vLLM is unreachable.
+    # Install: curl -fsSL https://ollama.com/install.sh | sh
+    # Pull a model: ollama pull qwen2.5:14b
+    ollama:
+      base_url: http://localhost:11434/v1
+      model: qwen2.5:14b
+
+  # ── Context injection (formerly "MCP") ──────────────────────────
+  context_injection:
+    enabled: true
+    include_history: true
+
+  # ── Prior-context propagation (formerly "a2a") ──────────────────
+  # Sequential context-passing.  Each agent's response is added to a
+  # per-anomaly history block subsequent agents see.  This is NOT
+  # bidirectional dialogue.
+  prior_context_enabled: true
+
+  # ── Reflexion loop ─────────────────────────────────────────────
+  # Applied to the proactive 2-agent tier only (security_analyst + remediation).
+  # A critic LLM call scores each agent's output on 3 criteria (specific,
+  # actionable, temporal).  If any criterion is missing, the agent is re-run
+  # once with the critic's feedback injected into the prompt.
+  # Adds at most ~200s per proactive run (45s critic + 150s retry if needed).
+  reflexion:
+    enabled: true
+    max_reflections: 1               # max retries per agent (keep to 1 for proactive)
+    agents:                          # which agents in the proactive tier to critique
+      - security_analyst
+      - remediation
+
+  # ── Token budget guardrails ─────────────────────────────────────
+  context_window_tokens: 16000
+
+  # ── Output schema enforcement ───────────────────────────────────
+  # When true, the security_analyst, threat_intel, and security_critic
+  # agents are asked to return JSON.  Far more reliable than regex.
+  structured_output: true
+
+  # ── Per-agent system prompts (loaded by AgentManager) ───────────
+  prompts:
+    security_analyst: |
+      You are a senior security analyst with 15+ years of experience.
+      Analyse the anomaly and identify:
+      1. Severity (critical/high/medium/low) with justification
+      2. Type of potential threat
+      3. Whether it is likely a false positive (with confidence %)
+      4. Key indicators of compromise
+      5. Immediate concerns
+
+    threat_intel: |
+      You are a threat intelligence specialist.  Building on the
+      prior security analysis, provide:
+      1. Known threat patterns that match this anomaly
+      2. MITRE ATT&CK technique mapping where applicable
+      3. Indicators of compromise (IoCs)
+      4. Related threat actors or campaigns
+      5. Historical context
+
+    remediation: |
+      You are an incident response team lead.  Using the prior
+      analysis and threat intel, provide:
+      1. Immediate containment steps (0-15 min)
+      2. Investigation procedures (15 min - 2 hr)
+      3. Long-term remediation actions
+      4. Prevention measures
+      5. Validation criteria
+
+    code_generator: |
+      You are a security automation engineer.  Generate concise,
+      production-ready scripts and detection rules implementing the
+      remediation plan.  Include detection scripts with logging and
+      error handling, automation snippets where safe, and monitoring
+      queries for the relevant platform.  Add inline comments.
+
+    security_review: |
+      You are a security reviewer.  Critically evaluate ALL prior
+      agent outputs and identify logical gaps, missed threats,
+      remediation completeness issues, and your overall confidence.
+
+    security_critic: |
+      You are a skeptical security critic.  Assess the full pipeline
+      output and explicitly state false-positive likelihood (with
+      reasoning), alternative benign explanations, evidence quality
+      (1-10), and whether the proposed response is proportionate.
+
+    data_collector: |
+      You are a digital forensics expert.  Specify volatile data to
+      collect immediately, system artefacts to preserve, log sources
+      and timeframes, correlation opportunities, and evidence
+      preservation procedures.
+
+# ── Correlation Analysis ─────────────────────────────────────────
+correlation:
+  enabled: true
+  default_time_window_hours: 24
+  default_min_score: 0.3
+  max_results_per_query: 50
+
+  # Scoring weights — tune these to emphasise what matters most.
+  weights:
+    same_host: 0.50          # multiple services failing on one host
+    same_check_type: 0.40    # systemic infrastructure problem
+    same_host_address: 0.30  # same IP address
+    same_subnet: 0.15        # same /24 network segment
+    same_location: 0.20      # same generic location field
+    similar_score: 0.10      # anomaly scores within ±0.1
+    same_model: 0.05         # detected by the same model
+    time_proximity_max: 0.30 # max contribution from time closeness
+    feature_similarity: 0.20 # max contribution from feature-vector cosine
+    severity_bonus: 0.15     # bonus when both anomalies are high/critical
+    model_agreement: 0.25    # bonus when multiple models flag same entity
+
+  # Caching — avoids recomputing correlations that haven't changed.
+  cache:
+    enabled: true
+    ttl_seconds: 300         # cache entries expire after 5 minutes
+
+  # Temporal pattern detection
+  temporal:
+    enabled: true
+    min_recurrences: 3       # need at least N occurrences to call it a pattern
+    time_tolerance_minutes: 30  # events within this window count as "same time"
+    lookback_days: 30        # how far back to look for recurring patterns
+
+  # AI-enhanced correlation analysis — uses the LLM to add intelligence
+  # on top of rule-based correlation scoring.  Requires agents.enabled=true
+  # and a working LLM provider (vLLM or Ollama).
+  ai:
+    enabled: true
+    enhance_correlations: true   # LLM causal chain + hidden relationships
+    enhance_temporal: true       # LLM root cause hypothesis for recurring patterns
+    enhance_incidents: true      # LLM validation of incident root causes
+    max_correlations_to_enhance: 10  # max correlated anomalies sent to LLM
+    timeout: 120                 # per-LLM-call timeout for correlation analysis
+
+proactive:
+  enabled: true
+  scan_interval_seconds: 300
+  trend_window_hours: 6
+  deviation_threshold_pct: 30.0
+  min_baseline_points: 10
+  max_points_per_metric: 500
+  customer_trend_mode: enabled
+  customer_deviation_threshold_pct: 50.0
+  max_alerts_per_customer_per_hour: 4
+  trend_energy_threshold: 1.0
+  route_to_alert_manager: true
+
 alerts:
   enabled: true
+  threshold_score: 0.8
+  dedup_window_minutes: 30
+  alerts_dir: storage/alerts
+  channels:
+    - console
+    - file
+    - webhook
+
+  # ── Suppression Rules ──────────────────────────────────────────
+  # Rules that prevent noisy or low-value anomalies from generating alerts.
+  # Each rule has: source (data source type), field, operator, value, reason.
+  # Operators: eq, ne, gt, lt, gte, lte, in, contains, exists, not_exists
+  # Set enabled: false on any rule to disable it without removing it.
+  suppression_rules:
+    # --- Nagios XI Rules ---
+    - name: nagios_ok_state
+      source: nagiosxi
+      field: current_state
+      operator: eq
+      value: "0"
+      reason: "Service is in OK state — no problem"
+      enabled: true
+
+    - name: nagios_soft_non_critical
+      source: nagiosxi
+      field: state_type
+      operator: eq
+      value: "0"
+      extra_condition:
+        field: current_state
+        operator: ne
+        value: "2"
+      reason: "SOFT state for non-CRITICAL service — transient, may self-recover"
+      enabled: true
+
+    - name: nagios_scheduled_downtime
+      source: nagiosxi
+      field: scheduled_downtime_depth
+      operator: gt
+      value: "0"
+      reason: "In scheduled downtime — planned maintenance"
+      enabled: true
+
+    - name: nagios_stale_check
+      source: nagiosxi
+      field: should_be_scheduled
+      operator: eq
+      value: "0"
+      extra_condition:
+        field: has_been_checked
+        operator: eq
+        value: "1"
+      reason: "Stale check — ran previously but no longer scheduled"
+      enabled: true
+
+    - name: nagios_unknown_state
+      source: nagiosxi
+      field: current_state
+      operator: eq
+      value: "3"
+      reason: "Check is in UNKNOWN state — the monitoring plugin itself failed to run (permission error, timeout, etc.). This is a monitoring infrastructure problem, not a service problem. No actionable alert."
+      enabled: true
+
+    - name: nagios_unknown_state_numeric
+      source: nagiosxi
+      field: current_state
+      operator: eq
+      value: "unknown"
+      reason: "Check state is UNKNOWN — plugin failed to execute. Not actionable."
+      enabled: true
+
+    - name: nagios_no_host_identity
+      source: nagiosxi
+      field: host_name
+      operator: empty_or_missing
+      reason: "No host identity in data — cannot determine what is affected. Likely a data collection or field-mapping issue. Fix the data source before alerting."
+      enabled: true
+
+    - name: nagios_acknowledged
+      source: nagiosxi
+      field: problem_has_been_acknowledged
+      operator: eq
+      value: "1"
+      reason: "Problem already acknowledged by operator"
+      enabled: false  # Disabled — acknowledged problems may still need alerting
+
+    - name: nagios_notifications_disabled
+      source: nagiosxi
+      field: notifications_enabled
+      operator: eq
+      value: "0"
+      reason: "Notifications disabled by admin — intentionally suppressed"
+      enabled: false  # Disabled — may want ML to flag even suppressed services
+
+    # --- Global Rules (apply to all sources) ---
+    - name: low_score_filter
+      source: "*"
+      field: _score
+      operator: lt
+      value: "0.3"
+      reason: "Anomaly score too low to warrant an alert"
+      enabled: false  # Disabled — threshold_score already handles this
   email:
     smtp_server: smtp.landisgyr.com
     port: 587
     sender: alerts@landisgyr.com
     recipients:
       - admin@landisgyr.com
-    # Enhanced alert settings
     include_analysis_summary: true
     include_remediation_steps: true
     include_confidence_scores: true
-  threshold: high
-  channels:
-    - email
-    - webhook
-    - file
   webhook:
     url: http://landisgyr.com/webhook
-    auth_token: "SECRETTOKEN12345"
+    auth_token: ${WEBHOOK_AUTH_TOKEN}     # set in environment, never commit secrets
     include_full_analysis: true
     include_evidence_chain: true
-  file:
-    path: logs/alerts.json
-    format: jsonl
  
 collectors:
   enabled:
@@ -272,11 +308,11 @@ collectors:
     connections:
       - name: postgres_main
         dialect: postgresql
-        host: localhost
-        port: 5432
-        database: mydatabase
-        user: myuser
-        password: mypassword
+        host: ${DB_HOST:-localhost}
+        port: ${DB_PORT:-5432}
+        database: ${DB_NAME:-mydatabase}
+        user: ${DB_USER:-myuser}
+        password: ${DB_PASSWORD}            # required env var, never commit
         queries:
           - name: system_metrics
             sql: "SELECT * FROM system_metrics WHERE timestamp > :last_timestamp ORDER BY timestamp DESC LIMIT :limit"
@@ -300,7 +336,7 @@ collectors:
  
     # --- Nagios XI Specific Configuration ---
     # Path to the CSV file containing Nagios XI server URLs and API keys
-    nagios_xi_config_file: "/opt/data/development/anomalydetection/AnomalyDetection/config/nagios_servers.csv"
+    nagios_xi_config_file: "config/nagios_servers.csv"
  
     # Default settings for all Nagios XI endpoints loaded from the CSV
     nagios_xi_defaults:
@@ -311,7 +347,7 @@ collectors:
         # For example, to filter by host group across all servers by default:
         # hostgroup_name: "production_servers"
       verify_ssl: False
-      # data_path: "" # No data_path needed as getservices returns a direct list of services
+      data_path: servicestatus  # Extract the service status array from {"recordcount": N, "servicestatus": [...]}
       transform:
         # Optional: Map Nagios XI fields to your internal anomaly detection system's field names
         field_mapping:
@@ -333,14 +369,8 @@ collectors:
       #     token: "some_token"
  
 database:
-  type: postgresql
-  file_path: storage/anomaly_db.json
-  connection:
-    host: localhost
-    port: 5432
-    database: anomaly_detection
-    user: anomaly_user
-    password: St@rW@rs!
+  type: sqlite
+  path: storage/anomaly_detection.db
   # Enhanced database settings for agent results
   store_agent_dialogue: true
   store_evidence_chains: true
@@ -357,22 +387,23 @@ models:
     - one_class_svm
     - ensemble
   isolation_forest:
-    contamination: 0.1
-    n_estimators: 100
+    contamination: 0.01  # Conservative — only flag strong outliers
+    n_estimators: 200
     random_state: 42
+    threshold: 0.95      # Very high — only the clearest anomalies
   one_class_svm:
     kernel: rbf
     nu: 0.05
     gamma: scale
-    threshold: 0.55
+    threshold: 0.75
   autoencoder:
-    hidden_dims: [128, 64, 32, 64, 128]
+    hidden_dims: [128, 64, 32]
     activation: relu
     dropout_rate: 0.2
     learning_rate: 0.001
     epochs: 50
     batch_size: 32
-    threshold: 0.5
+    threshold: 0.75
   gan:
     latent_dim: 100
     epochs: 200
@@ -382,12 +413,14 @@ models:
     dropout_rate: 0.3
     random_state: 42
     detection_strategy: reconstruction
-    threshold: 0.5
+    threshold: 0.75
   statistical:
     window_size: 10
     threshold_multiplier: 2.0
-    threshold: 0.5
+    threshold: 0.75
   ensemble:
+    # Require minimum 2 models to agree before ensemble flags an anomaly
+    min_models_agree: 2
     weights:
       isolation_forest_model: 0.6
       statistical_model: 0.4
@@ -400,7 +433,28 @@ models:
       - autoencoder_model
       - gan_model
       - one_class_svm_model
-    threshold: 0.5
+    threshold: 0.75
+  # Heavier deep models — disabled by default; add to 'enabled' list to activate.
+  # Requires deepod>=0.4 (deep_iforest) and torch>=2.0 (deep_sad).
+  deep_iforest:
+    n_ensemble: 6
+    hidden_dims: "64"    # comma-separated MLP widths per DeepOD API, e.g. "128,64"
+    rep_dim: 64
+    epochs: 100
+    batch_size: 64
+    lr: 0.001
+    threshold: 0.75
+    # device: cpu        # uncomment to force CPU even when CUDA is available
+  deep_sad:
+    hidden_dims: [32, 16]
+    rep_dim: 16
+    lr: 0.001
+    n_epochs: 50
+    batch_size: 64
+    weight_decay: 0.000001
+    eps: 0.000001
+    threshold: 0.75
+    # device: cpu        # uncomment to force CPU even when CUDA is available
  
 processors:
   normalizers:
@@ -410,53 +464,87 @@ processors:
   feature_extractors:
     - name: basic_features
       fields: ["*"]
-      categorical_encoding: label
+      sources_dir: "config/sources"   # SourceRegistry resolves fields per-source
+      categorical_encoding: hash
       use_real_embeddings: false
-      text_fields: []
-      numerical_fields:
-        # SentinelOne security metrics
-        - activeThreats
-        - totalMemory
-        - cpuCount
-        - coreCount
-        # Solarwinds monitoring metrics
-        - Status
-        - NodeID
-      boolean_fields:
-        - isActive
-        - isUpToDate
-        - isDecommissioned
-        - isPendingUninstall
-        - isUninstalled
-        - infected
-        - firewallEnabled
-        - networkQuarantineEnabled
-        - threatRebootRequired
-        - encryptedApplications
-        - hasContainerizedWorkload
-        - locationEnabled
-      categorical_fields:
-        - detectionState
-        - machineType
-        - osType
-        - networkStatus
-        - osName
-        - siteName
-        - domain
-        - groupName
-        - agentVersion
-        - appsVulnerabilityStatus
-        - scanStatus
-        - mitigationMode
-        - rangerStatus
-        - computerName
-        # Solarwinds categorical fields
-        - Caption
-        - MachineType
-        - Vendor
+      imputation_strategy: median
+      # No hardcoded field lists — per-source schemas in config/sources/
+      # define numerical, boolean, categorical, and text fields for each
+      # data source (nagiosxi.yaml).
+      # The SourceRegistry auto-detects the source from marker fields
+      # and applies the correct schema.
  
+anomaly_retention:
+  max_age_days: 30
+  keep_confirmed: true
+  auto_cleanup: true
+
+severity:
+  thresholds:
+    critical: 0.9
+    high: 0.8
+    medium: 0.6
+    # Scores below medium threshold are classified as "Low"
+
+  # Context-aware score adjustments for Nagios data.
+  # These reduce the effective anomaly score when monitoring context
+  # indicates the anomaly is less actionable.
+  # Set any multiplier to 1.0 to disable that adjustment.
+  score_adjustments:
+    soft_state: 0.60           # SOFT state (transient, may self-recover)
+    scheduled_downtime: 0.50   # Planned maintenance
+    acknowledged: 0.70         # Operator already aware
+    flapping: 0.75             # Unstable / noisy signal
+    notifications_disabled: 0.80  # Admin intentionally suppressed
+    stale_critical_days: 7     # Days before a CRITICAL is considered stale
+    stale_multiplier: 0.85     # Score reduction for stale CRITICALs
+
+proactive:
+  enabled: true
+  # How often the background scanner checks for trending metrics (seconds)
+  scan_interval_seconds: 300  # 5 minutes
+  # How many hours of recent data to compute trend slope
+  trend_window_hours: 6
+  # Minimum % deviation from baseline to generate a proactive alert
+  deviation_threshold_pct: 30
+  # Minimum data points before a baseline is considered valid
+  min_baseline_points: 10
+  # Maximum data points to retain per metric (older points evicted)
+  max_points_per_metric: 500
+  # Persist metric history to SQLite (survives restarts)
+  persist_to_db: true
+  # Customer/zone mapping: extract from Nagios host_alias naming convention
+  # Pattern to parse customer/zone from host_alias (regex with named groups)
+  customer_zone_pattern: '(?P<customer>\w+)\s.*(?P<zone>Z\d+_[A-Z])'
+  # Route proactive alerts through AlertManager (webhook/email/console)
+  route_to_alert_manager: true
+  # Route imminent-breach proactive alerts through the 2-agent reasoning loop
+  # (security_analyst + remediation) for LLM-generated triage and remediation steps.
+  route_to_agent_analysis: true
+  agent_analysis_hours_to_critical: 2  # only analyze if breach predicted within N hours
+  agent_analysis_cooldown_hours: 4     # minimum hours between LLM calls for the same metric
+  # Only generate proactive alerts for metrics with score above this
+  min_alert_severity: medium  # low, medium, high, critical
+
+# ── Service Ports (single source of truth) ──────────────────────
+# All scripts, the API server, and shell utilities read from here.
+# The API port serves both the REST API and the production UI (same process).
+# The vite_dev port is only used during development (npm run dev).
+ports:
+  api: 8502               # API + UI (production)
+  vllm: 8000              # vLLM OpenAI-compatible server
+  vite_dev: 5173           # UI dev server only (not used in production)
+
+# ── Log management ──────────────────────────────────────────────
+# Read by sysadmin/sop_log_management.sh, scripts/api_watchdog.sh,
+# and scripts/run_detection_cron.sh.
+logs:
+  retention_days: 14         # delete logs older than this
+  max_file_size_mb: 100      # rotate any single log file larger than this
+  archive_retention_days: 30 # how long to keep compressed archives
+
 system:
-  log_level: DEBUG
+  log_level: INFO              # use DEBUG only for troubleshooting
   name: Anomaly Detection System
   output_dir: results
   # Enhanced system settings
