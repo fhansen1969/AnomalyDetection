@@ -2,6 +2,9 @@
 Isolation Forest Model for Anomaly Detection
 
 This model uses the Isolation Forest algorithm for unsupervised anomaly detection.
+When AAD weights are present on disk (written by AADReweighter after analyst
+feedback), scoring uses the weighted tree-path formulation instead of sklearn's
+default uniform-weight decision_function.
 """
 
 import logging
@@ -125,12 +128,25 @@ class IsolationForestModel(AnomalyDetectionModel):
         if feature_matrix.shape[0] == 0:
             return []
         
-        # Get decision function scores (negative = anomalous)
-        # Isolation Forest returns negative scores for anomalies
-        decision_scores = self.model.decision_function(feature_matrix)
-        
-        # Invert scores so higher = more anomalous
-        inverted_scores = -decision_scores
+        # Prefer AAD-weighted scores if a sidecar weight file is present.
+        # Fall back to sklearn's decision_function on any error — weight-file
+        # corruption must never break live scoring.
+        inverted_scores = None
+        try:
+            from anomaly_detection.active_learning.aad_reweighter import AADReweighter
+            from anomaly_detection.active_learning.aad import compute_tree_scores
+            weights = AADReweighter.load_weights(self.name)
+            if weights is not None and len(weights) == self.model.n_estimators:
+                phi = compute_tree_scores(self.model, feature_matrix)
+                inverted_scores = phi @ weights
+                self.logger.debug("Using AAD-weighted scores")
+        except Exception as _aad_exc:
+            self.logger.warning(f"AAD scoring unavailable, falling back: {_aad_exc}")
+
+        if inverted_scores is None:
+            # Standard sklearn path: decision_function < 0 means anomalous
+            decision_scores = self.model.decision_function(feature_matrix)
+            inverted_scores = -decision_scores
         
         # Normalize scores to 0-1 range
         normalized_scores = self._normalize_scores(inverted_scores)
@@ -144,7 +160,7 @@ class IsolationForestModel(AnomalyDetectionModel):
                         item=data[i],
                         score=float(score),
                         details={
-                            "raw_score": float(decision_scores[i]),
+                            "raw_score": float(inverted_scores[i]),
                             "normalized_score": float(score)
                         }
                     )

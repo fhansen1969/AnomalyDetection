@@ -9,6 +9,8 @@ from datetime import datetime
 from pathlib import Path as PathLib
 from typing import Dict, List, Any, Optional
 
+import numpy as np
+
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Path, Body, File, UploadFile
 
 from api.state import app_state
@@ -83,6 +85,85 @@ _TRAIN_SEMAPHORE = asyncio.Semaphore(2)
 # no interleaving is possible.
 _trains_accepted_total: int = 0
 _trains_rejected_total: int = 0
+
+
+# ---------------------------------------------------------------------------
+# AAD reweighting helper
+# ---------------------------------------------------------------------------
+
+def _run_aad_reweighting(
+    model,
+    processed_data: List[Dict[str, Any]],
+    config: Dict[str, Any],
+    job_id: str,
+) -> None:
+    """
+    Fit AAD per-tree weights from any labeled samples in *processed_data* and
+    save a sidecar <model_name>.weights.npy file.
+
+    Called from train_model_job after model.train() completes.  Errors are
+    non-fatal — caller catches and logs them.
+
+    A data item is considered labeled when it contains a ``label`` key with
+    value 1 (TP) or 0 (FP).  Items without a ``label`` key are treated as
+    unlabeled and still contribute to the phi matrix (they anchor the score
+    distribution but don't impose gradient constraints).
+    """
+    try:
+        from anomaly_detection.active_learning.aad_reweighter import AADReweighter
+        from anomaly_detection.active_learning.aad import compute_tree_scores
+    except ImportError as exc:
+        logger.warning(f"[AAD] Module not available, skipping reweighting: {exc}")
+        return
+
+    al_cfg = config.get("active_learning", {}) if config else {}
+    if not al_cfg.get("aad_enabled", True):
+        logger.info("[AAD] Disabled via config — skipping reweighting")
+        return
+
+    min_samples = int(al_cfg.get("min_feedback_samples", 20))
+
+    # Collect feature matrix and labels from training items
+    if not hasattr(model, "_extract_features"):
+        logger.warning("[AAD] Model lacks _extract_features — skipping")
+        return
+
+    feature_matrix, _ = model._extract_features(processed_data)
+    if feature_matrix.shape[0] == 0:
+        logger.warning("[AAD] Empty feature matrix — skipping")
+        return
+
+    raw_labels = np.array(
+        [item.get("label", np.nan) for item in processed_data],
+        dtype=np.float64,
+    )
+    labeled_mask = ~np.isnan(raw_labels)
+    n_labeled = int(labeled_mask.sum())
+
+    if n_labeled < min_samples:
+        logger.info(
+            f"[AAD] {n_labeled} labeled samples < min_feedback_samples={min_samples} "
+            "— skipping weight fit (collect more analyst feedback first)"
+        )
+        return
+
+    reweighter = AADReweighter(
+        n_iter=int(al_cfg.get("n_iter", 200)),
+        lr=float(al_cfg.get("lr", 0.01)),
+        C=float(al_cfg.get("C", 1.0)),
+    )
+
+    weights = reweighter.fit_weights(
+        iforest=model.model,
+        feature_matrix=feature_matrix,
+        labels=raw_labels,
+    )
+
+    AADReweighter.save_weights(weights, model.name)
+    logger.info(
+        f"[AAD] job={job_id} model={model.name} "
+        f"weights fitted from {n_labeled} labels and saved"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -614,6 +695,15 @@ async def train_model_job(model_name: str, data: List[Dict[str, Any]], job_id: s
         except Exception as train_error:
             logger.error(f"[DEBUG] Training failed: {type(train_error).__name__}: {str(train_error)}")
             raise
+
+        # AAD reweighting — runs for IsolationForestModel when labeled feedback
+        # is present in the training batch.  Non-fatal: a failure here must not
+        # roll back the base training that just succeeded.
+        if IsolationForestModel and isinstance(model, IsolationForestModel) and model.model is not None:
+            try:
+                _run_aad_reweighting(model, processed_data, app_state.config, job_id)
+            except Exception as _aad_exc:
+                logger.warning(f"[AAD] Reweighting failed (non-fatal): {_aad_exc}")
 
         # Save model state
         logger.info(f"[DEBUG] Saving model state...")

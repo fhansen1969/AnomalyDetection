@@ -5,6 +5,9 @@ Pre-populates sys.modules with stubs so that anomaly_detection's __init__.py
 can be imported without triggering gRPC/mutex deadlocks or requiring live
 infrastructure (databases, message brokers, etc.).
 
+Covers: deep-model tests, AAD reweighter tests (pure numpy + sklearn),
+calibration tests, and drift tests.
+
 NOTE: torch is intentionally NOT stubbed — deep-model tests need real torch.
 Packages that need real __path__ navigation (anomaly_detection sub-packages)
 use _pkg_stub to preserve file-system discovery of un-stubbed sub-modules.
@@ -99,6 +102,7 @@ _pkg_stubs: dict = {
     "anomaly_detection.models.one_class_svm": MagicMock(),
     "anomaly_detection.models.statistical":   MagicMock(),
     "anomaly_detection.models.isolation_forest": MagicMock(),
+    "anomaly_detection.models.lstm_model":    MagicMock(),
 }
 for _name, _stub in _pkg_stubs.items():
     if _name not in sys.modules:

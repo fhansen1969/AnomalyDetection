@@ -618,3 +618,19 @@ system:
     - json
     - markdown
     - html
+
+active_learning:
+  # Active Anomaly Discovery (Das et al., ICDM 2016)
+  # Reweights IsolationForest trees using analyst TP/FP labels so the
+  # unsupervised layer learns from feedback, not just the supervised head.
+  aad_enabled: true
+  # Minimum labeled samples (TP + FP combined) required before fitting weights.
+  # Below this threshold the weight file is not written / overwritten.
+  min_feedback_samples: 20
+  # How often the scheduled weight-refresh job should run (informational;
+  # the pipeline/cron reads this value — it does not self-schedule here).
+  refresh_interval_days: 7
+  # Gradient descent settings (tune if convergence is slow or noisy)
+  n_iter: 200
+  lr: 0.01
+  C: 1.0
