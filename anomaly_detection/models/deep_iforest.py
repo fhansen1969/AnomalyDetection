@@ -42,8 +42,8 @@ class DeepIsolationForestModel(AnomalyDetectionModel):
         feature_prefix  str   Restrict to features with this prefix. Default: None
     """
 
-    def __init__(self, name: str, config: Dict[str, Any]):
-        super().__init__(name, config)
+    def __init__(self, name: str, config: Dict[str, Any], storage_manager=None):
+        super().__init__(name, config, storage_manager)
 
         # deepod is imported lazily in train/detect to avoid grpc/abseil
         # mutex deadlocks when sentence-transformers is loaded in the same process.
@@ -106,10 +106,12 @@ class DeepIsolationForestModel(AnomalyDetectionModel):
         }
         logger.info("DeepIsolationForest training complete.")
 
-    def _detect_impl(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def detect(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Score data and return anomalies above threshold."""
         if not self._check_deepod():
             logger.error("deepod not installed; cannot detect.")
+            return []
+        if not data:
             return []
 
         self._ensure_loaded()

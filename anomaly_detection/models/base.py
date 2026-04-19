@@ -547,6 +547,12 @@ class ModelFactory:
             elif model_name == "extended_iforest":
                 model = self._create_extended_iforest_model(model_config)
 
+            elif model_name == "deep_iforest":
+                model = self._create_deep_iforest_model(model_config)
+
+            elif model_name == "deep_sad":
+                model = self._create_deep_sad_model(model_config)
+
             else:
                 self.logger.warning(f"Unknown model type: {model_name}")
                 return None
@@ -657,6 +663,26 @@ class ModelFactory:
             return ExtendedIsolationForestModel("extended_iforest", config, self.storage_manager)
         except ImportError as e:
             self.logger.error(f"Could not import ExtendedIsolationForestModel: {e}")
+            return None
+
+    def _create_deep_iforest_model(self, config: Dict[str, Any]) -> Optional[AnomalyDetectionModel]:
+        """Create Deep Isolation Forest model (requires deepod>=0.4)."""
+        try:
+            from anomaly_detection.models.deep_iforest import DeepIsolationForestModel
+            self.logger.info("Using DeepIsolationForestModel")
+            return DeepIsolationForestModel("deep_iforest", config, self.storage_manager)
+        except ImportError as e:
+            self.logger.error(f"Could not import DeepIsolationForestModel: {e}")
+            return None
+
+    def _create_deep_sad_model(self, config: Dict[str, Any]) -> Optional[AnomalyDetectionModel]:
+        """Create Deep SAD model (vendored, requires torch)."""
+        try:
+            from anomaly_detection.models.deep_sad_model import DeepSADModel
+            self.logger.info("Using DeepSADModel")
+            return DeepSADModel("deep_sad", config, self.storage_manager)
+        except ImportError as e:
+            self.logger.error(f"Could not import DeepSADModel: {e}")
             return None
     
     # Helper methods for model management

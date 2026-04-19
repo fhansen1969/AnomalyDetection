@@ -452,6 +452,7 @@ models:
   # Heavier deep models — disabled by default; add to 'enabled' list to activate.
   # Requires deepod>=0.4 (deep_iforest) and torch>=2.0 (deep_sad).
   deep_iforest:
+    enabled: false
     n_ensemble: 6
     hidden_dims: "64"    # comma-separated MLP widths per DeepOD API, e.g. "128,64"
     rep_dim: 64
@@ -461,6 +462,7 @@ models:
     threshold: 0.75
     # device: cpu        # uncomment to force CPU even when CUDA is available
   deep_sad:
+    enabled: false
     hidden_dims: [32, 16]
     rep_dim: 16
     lr: 0.001

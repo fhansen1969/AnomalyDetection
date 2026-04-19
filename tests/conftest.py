@@ -101,7 +101,7 @@ _pkg_stubs: dict = {
     "anomaly_detection.models.ensemble":      MagicMock(),
     "anomaly_detection.models.one_class_svm": MagicMock(),
     "anomaly_detection.models.statistical":   MagicMock(),
-    "anomaly_detection.models.isolation_forest": MagicMock(),
+    # isolation_forest is NOT stubbed — test_aad_reweighter needs the real class
     "anomaly_detection.models.lstm_model":    MagicMock(),
 }
 for _name, _stub in _pkg_stubs.items():

@@ -54,8 +54,8 @@ class DeepSADModel(AnomalyDetectionModel):
         feature_prefix  str        Restrict to features with this prefix.
     """
 
-    def __init__(self, name: str, config: Dict[str, Any]):
-        super().__init__(name, config)
+    def __init__(self, name: str, config: Dict[str, Any], storage_manager=None):
+        super().__init__(name, config, storage_manager)
 
         self.hidden_dims: List[int] = list(config.get("hidden_dims", [32, 16]))
         self.rep_dim: int = int(config.get("rep_dim", 16))
@@ -80,8 +80,10 @@ class DeepSADModel(AnomalyDetectionModel):
         """Train unsupervised (all labels = 0 / normal)."""
         self.fit(data, labels=None)
 
-    def _detect_impl(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def detect(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Score data and return items whose score ≥ threshold."""
+        if not data:
+            return []
         if self._trainer is None:
             logger.error("DeepSADModel not trained.")
             return []
