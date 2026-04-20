@@ -652,7 +652,11 @@ async def lifespan(app: FastAPI):
     async def _nightly_retrain_loop():
         """Retrain the supervised classifier once per day if new feedback exists."""
         import asyncio as _aio
-        from anomaly_detection.models.supervised_classifier import get_classifier as _get_clf, FEEDBACK_DIR
+        try:
+            from anomaly_detection.models.supervised_classifier import get_classifier as _get_clf, FEEDBACK_DIR
+        except ImportError:
+            logger.debug("supervised_classifier not available — nightly retrain loop exiting")
+            return
         _RETRAIN_INTERVAL_HOURS = 24
 
         # Stagger the first run by 60 s to avoid startup noise
