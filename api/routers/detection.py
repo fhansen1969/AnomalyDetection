@@ -6,9 +6,9 @@ import uuid
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Path, Body
+from pathlib import Path as FilePath
 
-from pathlib import Path
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Path, Body
 
 from api.state import app_state
 from api.schemas import DetectionRequest, BulkDetectionRequest, DataBatch, JobStatus
@@ -42,7 +42,7 @@ except Exception:
 logger = logging.getLogger("api_services")
 router = APIRouter()
 
-_CALIBRATORS_DIR = Path("storage/calibrators")
+_CALIBRATORS_DIR = FilePath("storage/calibrators")
 
 
 def _load_calibrator(model_name: str):
