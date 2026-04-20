@@ -3,7 +3,7 @@ Centralized application state container.
 Replaces scattered global variables with a single typed object.
 """
 import threading
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional, Set
 
 
 class AppState:
@@ -26,6 +26,12 @@ class AppState:
         # Populated lazily on first detection; None sentinel prevents repeated
         # filesystem probes when no calibrator has been fitted yet.
         self.calibrators: Dict[str, Any] = {}
+        # In-memory alert log: populated by AlertManager.send_alert().
+        # Supports GET /alerts, GET /alerts/stats, and per-alert actions.
+        self.alert_store: List[Dict[str, Any]] = []
+        self.alert_store_lock = threading.Lock()
+        # Async tasks dispatching alerts (drained on shutdown by lifespan.py).
+        self.alert_dispatch_tasks: Set[Any] = set()
 
 
 # Singleton instance — imported by all routers

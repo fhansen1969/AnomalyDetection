@@ -4,10 +4,10 @@ import logging
 import os
 import uuid
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Path
 
 from api.state import app_state
 from api.schemas import AlertConfig
@@ -75,6 +75,37 @@ class AlertManager:
 
         # Broadcast to WebSocket clients
         await self._broadcast_alert(anomaly, alert_message)
+
+        # Persist to in-memory store so GET /alerts can surface this alert
+        severity = "low"
+        score = anomaly.get("score", 0)
+        if score >= 0.9:
+            severity = "critical"
+        elif score >= 0.8:
+            severity = "high"
+        elif score >= 0.6:
+            severity = "medium"
+
+        record: Dict[str, Any] = {
+            "id": anomaly.get("id") or str(uuid.uuid4()),
+            "timestamp": anomaly.get("timestamp", datetime.utcnow().isoformat()),
+            "message": alert_message,
+            "score": score,
+            "model": anomaly.get("model", "unknown"),
+            "severity": severity,
+            "status": "new",
+            "acknowledged": False,
+            "acknowledged_by": None,
+            "acknowledged_at": None,
+            "resolved": False,
+            "resolved_by": None,
+            "resolved_at": None,
+            "notes": [],
+            "channels": list(self.channels),
+            "anomaly": anomaly,
+        }
+        with app_state.alert_store_lock:
+            app_state.alert_store.append(record)
 
         return all(results)
 
@@ -263,7 +294,7 @@ async def test_alert(
             "message": "Test alert sent successfully" if success else "Failed to send test alert"
         }
     except Exception as e:
-        logging.error(f"Error sending test alert: {str(e)}")
+        logger.error(f"Error sending test alert: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error sending test alert: {str(e)}")
 
 
@@ -311,5 +342,142 @@ async def update_alert_config(
             "updated_at": datetime.utcnow().isoformat()
         }
     except Exception as e:
-        logging.error(f"Error updating alert configuration: {str(e)}")
+        logger.error(f"Error updating alert configuration: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error updating alert configuration: {str(e)}")
+
+
+@router.get("/alerts/config", tags=["Alerts"], response_model=Dict[str, Any])
+async def get_alert_config():
+    """Return the current alert configuration."""
+    if app_state.config is None:
+        raise HTTPException(status_code=404, detail="System not initialized")
+    alerts_cfg = app_state.config.get("alerts", {})
+    return {
+        "enabled": alerts_cfg.get("enabled", False),
+        "threshold_score": alerts_cfg.get("threshold_score", 0.8),
+        "channels": alerts_cfg.get("channels", ["console"]),
+        "email": alerts_cfg.get("email"),
+        "webhook": alerts_cfg.get("webhook"),
+        "file": alerts_cfg.get("file"),
+    }
+
+
+@router.get("/alerts/stats", tags=["Alerts"], response_model=Dict[str, Any])
+async def get_alert_stats():
+    """Return aggregate statistics over the in-memory alert store."""
+    with app_state.alert_store_lock:
+        store = list(app_state.alert_store)
+
+    total = len(store)
+    resolved = sum(1 for a in store if a.get("resolved"))
+    unresolved = total - resolved
+    new_count = sum(1 for a in store if a.get("status") == "new")
+
+    by_severity: Dict[str, int] = {}
+    by_model: Dict[str, int] = {}
+    for a in store:
+        sev = a.get("severity", "unknown")
+        by_severity[sev] = by_severity.get(sev, 0) + 1
+        mdl = a.get("model", "unknown")
+        by_model[mdl] = by_model.get(mdl, 0) + 1
+
+    resolution_rate = round(resolved / total * 100, 1) if total else 0.0
+
+    return {
+        "total_alerts": total,
+        "resolved_alerts": resolved,
+        "unresolved_alerts": unresolved,
+        "new_count": new_count,
+        "resolution_rate_pct": resolution_rate,
+        "by_severity": by_severity,
+        "by_model": by_model,
+    }
+
+
+@router.get("/alerts", tags=["Alerts"], response_model=List[Dict[str, Any]])
+async def list_alerts(
+    status: Optional[str] = Query(None, description="Filter by status (new, acknowledged, resolved)"),
+    severity: Optional[str] = Query(None, description="Filter by severity"),
+    model: Optional[str] = Query(None, description="Filter by model name"),
+    limit: int = Query(200, description="Maximum number of alerts to return"),
+    include_resolved: bool = Query(False, description="Include resolved alerts"),
+):
+    """List alerts from the in-memory store with optional filters."""
+    with app_state.alert_store_lock:
+        alerts = list(app_state.alert_store)
+
+    if not include_resolved:
+        alerts = [a for a in alerts if not a.get("resolved")]
+    if status:
+        alerts = [a for a in alerts if a.get("status") == status]
+    if severity:
+        alerts = [a for a in alerts if a.get("severity") == severity]
+    if model:
+        alerts = [a for a in alerts if a.get("model") == model]
+
+    # Most recent first
+    alerts = sorted(alerts, key=lambda a: a.get("timestamp", ""), reverse=True)
+    return alerts[:limit]
+
+
+@router.post("/alerts/{alert_id}/acknowledge", tags=["Alerts"], response_model=Dict[str, Any])
+async def acknowledge_alert(
+    alert_id: str = Path(..., description="Alert ID"),
+    by: str = Query("user", description="Who is acknowledging"),
+):
+    """Acknowledge an alert."""
+    with app_state.alert_store_lock:
+        for alert in app_state.alert_store:
+            if alert["id"] == alert_id:
+                alert["acknowledged"] = True
+                alert["acknowledged_by"] = by
+                alert["acknowledged_at"] = datetime.utcnow().isoformat()
+                alert["status"] = "acknowledged"
+                return {"status": "ok", "alert_id": alert_id, "acknowledged_by": by}
+    raise HTTPException(status_code=404, detail=f"Alert {alert_id} not found")
+
+
+@router.post("/alerts/{alert_id}/resolve", tags=["Alerts"], response_model=Dict[str, Any])
+async def resolve_alert(
+    alert_id: str = Path(..., description="Alert ID"),
+    by: str = Query("user", description="Who is resolving"),
+    note: str = Query("", description="Optional resolution note"),
+):
+    """Resolve an alert."""
+    with app_state.alert_store_lock:
+        for alert in app_state.alert_store:
+            if alert["id"] == alert_id:
+                alert["resolved"] = True
+                alert["resolved_by"] = by
+                alert["resolved_at"] = datetime.utcnow().isoformat()
+                alert["status"] = "resolved"
+                if note:
+                    alert["notes"].append({
+                        "by": by,
+                        "text": note,
+                        "at": datetime.utcnow().isoformat(),
+                        "type": "resolution",
+                    })
+                return {"status": "ok", "alert_id": alert_id, "resolved_by": by}
+    raise HTTPException(status_code=404, detail=f"Alert {alert_id} not found")
+
+
+@router.post("/alerts/{alert_id}/note", tags=["Alerts"], response_model=Dict[str, Any])
+async def add_alert_note(
+    alert_id: str = Path(..., description="Alert ID"),
+    by: str = Query("user", description="Author of the note"),
+    text: str = Query(..., description="Note text"),
+):
+    """Add an investigator note to an alert."""
+    with app_state.alert_store_lock:
+        for alert in app_state.alert_store:
+            if alert["id"] == alert_id:
+                note = {
+                    "by": by,
+                    "text": text,
+                    "at": datetime.utcnow().isoformat(),
+                    "type": "note",
+                }
+                alert["notes"].append(note)
+                return {"status": "ok", "alert_id": alert_id, "note": note}
+    raise HTTPException(status_code=404, detail=f"Alert {alert_id} not found")
