@@ -281,7 +281,10 @@ class StorageManager:
         if self.connection_state != ConnectionState.CONNECTED:
             self.logger.warning("Cannot create tables: not connected")
             return False
-        
+
+        if self.type not in ("postgresql", "postgres"):
+            return True
+
         # Import psycopg2 for DictCursor
         try:
             import psycopg2.extras
@@ -438,7 +441,10 @@ class StorageManager:
         """Check if database connection is healthy."""
         if self.connection_state != ConnectionState.CONNECTED:
             return False
-        
+
+        if self.type not in ("postgresql", "postgres"):
+            return True
+
         with self.get_connection() as conn:
             if not conn:
                 return False
