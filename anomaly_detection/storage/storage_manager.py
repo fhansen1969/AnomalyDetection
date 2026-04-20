@@ -167,6 +167,7 @@ class StorageManager:
             self._initialize_postgresql()
         else:
             self.logger.info(f"Using {self.type} storage backend")
+            self.connection_state = ConnectionState.CONNECTED
     
     def _initialize_postgresql(self) -> None:
         """Initialize PostgreSQL with lazy import to prevent mutex deadlock."""
