@@ -44,6 +44,7 @@ class AnomalyDetectionModel(abc.ABC):
         self.model_state = {}
         self.threshold = float(config.get("threshold", 0.7))
         self.is_trained = False
+        self.performance: Dict[str, Any] = {}
         
         self.logger.info(f"Initialized {self.__class__.__name__} '{name}'")
     
@@ -416,8 +417,9 @@ class ImprovedAnomalyDetectionModel(AnomalyDetectionModel):
             except Exception:
                 pass
             
+            self.performance = metrics
             return metrics
-            
+
         except Exception as e:
             self.logger.error(f"Error in evaluate: {e}")
             return {}

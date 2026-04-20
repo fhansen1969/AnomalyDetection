@@ -32,6 +32,12 @@ class AppState:
         self.alert_store_lock = threading.Lock()
         # Async tasks dispatching alerts (drained on shutdown by lifespan.py).
         self.alert_dispatch_tasks: Set[Any] = set()
+        # Persisted config path (set by lifespan on load).
+        self.config_path: Optional[str] = None
+
+    def set_config(self, config_dict: Dict[str, Any]) -> None:
+        """Replace the running configuration (called by lifespan on startup/reload)."""
+        self.config = config_dict
 
 
 # Singleton instance — imported by all routers
