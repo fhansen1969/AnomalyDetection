@@ -5,7 +5,11 @@ from anomaly_detection.models.isolation_forest import IsolationForestModel
 from anomaly_detection.models.one_class_svm import OneClassSVMModel
 from anomaly_detection.models.autoencoder import AutoencoderModel
 from anomaly_detection.models.ensemble import EnsembleModel
-from anomaly_detection.models.trend_model import TrendModel
+try:
+    from anomaly_detection.models.trend_model import TrendModel
+except ImportError:
+    TrendModel = None  # trend_model not yet implemented; managed by proactive subsystem
+
 from anomaly_detection.models.deep_iforest import DeepIsolationForestModel
 from anomaly_detection.models.deep_sad_model import DeepSADModel
 from anomaly_detection.models.ecod import ECODModel
