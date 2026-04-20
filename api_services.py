@@ -20,6 +20,8 @@ import sys
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -96,6 +98,22 @@ app.include_router(database.router)
 app.include_router(websocket.router)
 app.include_router(export.router)
 app.include_router(triage.router)
+
+# ---------------------------------------------------------------------------
+# React SPA static file serving
+# Must come AFTER all API routers so /api/* routes take priority.
+# ---------------------------------------------------------------------------
+_UI_DIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui", "dist")
+if os.path.isdir(_UI_DIST):
+    app.mount("/assets", StaticFiles(directory=os.path.join(_UI_DIST, "assets")), name="assets")
+
+    @app.get("/favicon.svg", include_in_schema=False)
+    async def favicon():
+        return FileResponse(os.path.join(_UI_DIST, "favicon.svg"))
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str):
+        return FileResponse(os.path.join(_UI_DIST, "index.html"))
 
 # ---------------------------------------------------------------------------
 # Backward-compatible exports
