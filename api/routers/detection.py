@@ -52,15 +52,6 @@ except Exception:
     _EXPLAINER_AVAILABLE = False
     _EXPLAINER = None
 
-try:
-    import numpy as np
-    from anomaly_detection.explainers import ShapExplainer
-    _EXPLAINER = ShapExplainer()
-    _EXPLAINER_AVAILABLE = True
-except Exception:
-    _EXPLAINER_AVAILABLE = False
-    _EXPLAINER = None
-
 logger = logging.getLogger("api_services")
 router = APIRouter()
 
