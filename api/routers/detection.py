@@ -14,21 +14,43 @@ from api.state import app_state
 from api.schemas import DetectionRequest, BulkDetectionRequest, DataBatch, JobStatus
 from api.helpers import store_detection_results
 
-# Import processor classes with try/except
-try:
-    from anomaly_detection.processors.normalizer import Normalizer
-except ImportError:
-    Normalizer = None
+# Processor imports are deferred to avoid the SentenceTransformer/PyTorch mutex
+# deadlock that occurs when torch 1.x is imported at module level on macOS.
+# These are resolved on first use in _run_detection().
+Normalizer = None
+FeatureExtractor = None
+
+def _ensure_processors():
+    global Normalizer, FeatureExtractor
+    if FeatureExtractor is not None:
+        return
+    try:
+        from anomaly_detection.processors.normalizer import Normalizer as _N
+        Normalizer = _N
+    except ImportError:
+        pass
+    try:
+        from anomaly_detection.processors.feature_extractor import FeatureExtractor as _FE
+        if getattr(_FE, '__abstractmethods__', None):
+            from api.extractors import ConcreteFeatureExtractor as _CFE
+            FeatureExtractor = _CFE
+        else:
+            FeatureExtractor = _FE
+    except ImportError:
+        try:
+            from api.extractors import ConcreteFeatureExtractor as _CFE
+            FeatureExtractor = _CFE
+        except ImportError:
+            pass
 
 try:
-    from anomaly_detection.processors.feature_extractor import FeatureExtractor as _FE
-    # Use concrete fallback if the class is abstract (avoid test instantiation side-effect)
-    if getattr(_FE, '__abstractmethods__', None):
-        from api.extractors import ConcreteFeatureExtractor as FeatureExtractor
-    else:
-        FeatureExtractor = _FE
-except ImportError:
-    from api.extractors import ConcreteFeatureExtractor as FeatureExtractor
+    import numpy as np
+    from anomaly_detection.explainers import ShapExplainer
+    _EXPLAINER = ShapExplainer()
+    _EXPLAINER_AVAILABLE = True
+except Exception:
+    _EXPLAINER_AVAILABLE = False
+    _EXPLAINER = None
 
 try:
     import numpy as np
@@ -408,6 +430,7 @@ async def detect_anomalies_job(model_name: str, data_items: List[Dict[str, Any]]
         job_id: ID of the job
         threshold: Optional custom threshold for detection
     """
+    _ensure_processors()
     try:
         logging.info(f"Starting detection job {job_id} for model {model_name}")
         with app_state.background_jobs_lock:
@@ -561,8 +584,10 @@ async def detect_anomalies_job(model_name: str, data_items: List[Dict[str, Any]]
 
         # Store detected anomalies
         if app_state.storage_manager and anomalies:
-            await asyncio.to_thread(lambda: app_state.storage_manager.store_anomalies(anomalies))
-            logging.info(f"Stored {len(anomalies)} detected anomalies")
+            stored_count = await asyncio.to_thread(lambda: app_state.storage_manager.store_anomalies(anomalies))
+            logging.info(f"Stored {stored_count}/{len(anomalies)} detected anomalies")
+            if stored_count == 0:
+                logging.error(f"FAILED to store any of {len(anomalies)} anomalies — check storage_manager connection")
 
             if app_state.alert_manager:
                 for anomaly in anomalies:
@@ -610,14 +635,8 @@ async def detect_anomalies_job(model_name: str, data_items: List[Dict[str, Any]]
 
 
 async def bulk_detect_anomalies_job(model_names: List[str], data_items: List[Dict[str, Any]], job_id: str):
-    """
-    Background job for detecting anomalies across multiple models with enhanced field validation.
-
-    Args:
-        model_names: List of model names to use
-        data_items: List of data items for detection
-        job_id: ID of the job
-    """
+    """Background job for detecting anomalies across multiple models."""
+    _ensure_processors()
     try:
         logging.info(f"Starting bulk detection job {job_id} across {len(model_names)} models")
         with app_state.background_jobs_lock:
