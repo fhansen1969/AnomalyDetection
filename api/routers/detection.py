@@ -124,6 +124,121 @@ def _observe_drift(processed_data: List[Dict[str, Any]], job_id: str) -> None:
         logger.debug("[drift] observe error (non-fatal): %s", exc)
 
 
+def _enrich_anomaly(anomaly: Dict[str, Any], model, model_name: str,
+                    processed_data: List[Dict[str, Any]], job_id: str) -> None:
+    """
+    Enrich an anomaly dict in-place with model metadata, threshold analysis,
+    feature context, and detection job provenance.
+
+    Called after the model's own create_anomaly() output so it can add fields
+    that require API-layer context (job_id, batch size, trained feature names).
+    """
+    # Model class name (detector algorithm)
+    model_type = type(model).__name__
+    anomaly.setdefault("model_type", model_type)
+
+    # Stable version fingerprint built from the model's training config
+    model_version = "v1"
+    cfg = getattr(model, "config", None)
+    if isinstance(cfg, dict):
+        parts = []
+        if cfg.get("n_estimators"):
+            parts.append(f"n{cfg['n_estimators']}")
+        if cfg.get("random_state") is not None:
+            parts.append(f"s{cfg['random_state']}")
+        if cfg.get("contamination") is not None:
+            parts.append(f"c{cfg['contamination']}")
+        if parts:
+            model_version = ".".join(parts)
+    anomaly["model_version"] = model_version
+
+    # Ensure details is a mutable dict
+    if not isinstance(anomaly.get("details"), dict):
+        anomaly["details"] = {}
+    details = anomaly["details"]
+
+    score = float(anomaly.get("score", 0))
+    threshold = float(anomaly.get("threshold", 0.7))
+    margin = round(score - threshold, 4)
+
+    # Threshold analysis
+    details["threshold_margin"] = margin
+    details["threshold_exceedance_pct"] = round(
+        (margin / max(threshold, 1e-6)) * 100, 1
+    )
+
+    # Human-readable explanation
+    if score >= 0.90:
+        explanation = (
+            f"Score {score:.3f} is in the extreme tail of the anomaly distribution "
+            f"({details.get('score_percentile', 'top 10%')}) — high-confidence outlier"
+        )
+    elif score >= 0.70:
+        explanation = (
+            f"Score {score:.3f} exceeds threshold {threshold:.2f} by "
+            f"{margin:.3f} ({details.get('threshold_exceedance_pct', 0):.1f}%) — "
+            "likely a genuine anomaly"
+        )
+    else:
+        explanation = (
+            f"Score {score:.3f} is {margin:.3f} above threshold {threshold:.2f} — "
+            "borderline anomaly; review alongside correlated signals"
+        )
+    details["score_explanation"] = explanation
+
+    # Training feature context (available on tree/pyod models)
+    training_names = getattr(model, "training_feature_names", None)
+    if training_names:
+        details["trained_feature_count"] = len(training_names)
+        details["trained_feature_names"] = training_names[:30]
+
+        # Per-data-point feature values for this anomaly
+        orig = anomaly.get("original_data", {})
+        if isinstance(orig, dict):
+            feat = orig.get("features", {})
+            if isinstance(feat, dict) and feat:
+                snapshot = {}
+                for fname in training_names[:15]:
+                    if fname in feat:
+                        try:
+                            snapshot[fname] = round(float(feat[fname]), 4)
+                        except (ValueError, TypeError):
+                            pass
+                if snapshot:
+                    details["feature_value_snapshot"] = snapshot
+
+    # Detection job provenance
+    details["detection_context"] = {
+        "job_id": job_id,
+        "batch_size": len(processed_data),
+        "detector_algorithm": model_type,
+        "model_name": model_name,
+    }
+
+    # Better src/dst IP resolution — check original_data top-level then features
+    orig = anomaly.get("original_data", {})
+    if isinstance(orig, dict):
+        if not anomaly.get("src_ip"):
+            candidates = list(orig.items())
+            feat = orig.get("features", {})
+            if isinstance(feat, dict):
+                candidates += list(feat.items())
+            for k, v in candidates:
+                if k in ("src_ip", "source_ip", "sourceIp", "ip", "ip_address") and v:
+                    anomaly["src_ip"] = str(v)
+                    break
+
+        if not anomaly.get("dst_ip"):
+            candidates = list(orig.items())
+            feat = orig.get("features", {})
+            if isinstance(feat, dict):
+                candidates += list(feat.items())
+            for k, v in candidates:
+                if k in ("dst_ip", "dest_ip", "destination_ip", "destIp", "remote_ip") and v:
+                    anomaly["dst_ip"] = str(v)
+                    break
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -442,6 +557,7 @@ async def detect_anomalies_job(model_name: str, data_items: List[Dict[str, Any]]
                     anomaly["top_features"] = None
 
             _stamp_calibrated_scores(anomaly, model_name)
+            _enrich_anomaly(anomaly, model, model_name, processed_data, job_id)
 
         # Store detected anomalies
         if app_state.storage_manager and anomalies:
@@ -603,6 +719,7 @@ async def bulk_detect_anomalies_job(model_names: List[str], data_items: List[Dic
                         anomaly["data"] = anomaly["original_data"]
 
                     _stamp_calibrated_scores(anomaly, model_name)
+                    _enrich_anomaly(anomaly, model, model_name, processed_data, job_id)
 
                 all_anomalies.extend(model_anomalies)
                 logging.info(f"Detected {len(model_anomalies)} anomalies with model {model_name}")

@@ -19,6 +19,8 @@ class AnomalyModel(BaseModel):
     detection_time: str
     model: str
     model_id: Optional[int] = None
+    model_type: Optional[str] = None
+    model_version: Optional[str] = None
     score: float
     threshold: float = 0.5
     original_data: Dict[str, Any]

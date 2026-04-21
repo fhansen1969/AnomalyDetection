@@ -284,14 +284,126 @@ def render_anomaly_overview(anomaly):
             else:
                 st.markdown("*No raw data available*")
         
-        # Additional Details Card (only if exists)
+        # Additional Details Card — enriched structured rendering
         details = anomaly.get('details', {})
         if details and isinstance(details, dict):
             with st.container(border=True):
-                st.markdown('<p style="background-color: white; padding: 8px; margin: -16px -16px 16px -16px; font-weight: 600; font-size: 1.1rem;">🔍 Additional Details</p>', unsafe_allow_html=True)
-                
+                st.markdown('<p style="background-color: white; padding: 8px; margin: -16px -16px 16px -16px; font-weight: 600; font-size: 1.1rem;">🔍 Detection Details</p>', unsafe_allow_html=True)
+
+                # Scalar fields rendered directly
+                _SKIP_IN_FLAT = {"contributing_features", "top_features_by_value",
+                                 "trained_feature_names", "feature_value_snapshot",
+                                 "detection_context"}
                 for key, value in details.items():
-                    st.markdown(f"**{key}:** {value}")
+                    if key in _SKIP_IN_FLAT:
+                        continue
+                    if isinstance(value, (int, float)):
+                        st.markdown(f"**{key.replace('_', ' ').title()}:** `{value}`")
+                    else:
+                        st.markdown(f"**{key.replace('_', ' ').title()}:** {value}")
+
+                # Nested dicts/lists as expandable JSON
+                if details.get("detection_context"):
+                    with st.expander("⚙️ Detection Context"):
+                        st.json(details["detection_context"])
+                if details.get("top_features_by_value"):
+                    with st.expander("🏆 Top Features by Value"):
+                        st.json(details["top_features_by_value"])
+                if details.get("feature_value_snapshot"):
+                    with st.expander("📸 Feature Value Snapshot"):
+                        st.json(details["feature_value_snapshot"])
+                if details.get("contributing_features"):
+                    with st.expander(f"📋 Contributing Features ({details.get('feature_count', 0)})"):
+                        for f in details["contributing_features"]:
+                            st.markdown(f"• `{f}`")
+
+    # ── Detection Intelligence ──────────────────────────────────────────────
+    # Visible only when the enriched fields are present.
+    details = anomaly.get('details', {})
+    if not isinstance(details, dict):
+        details = {}
+
+    _INTEL_KEYS = {
+        'score_percentile', 'anomaly_magnitude', 'score_explanation',
+        'threshold_margin', 'trained_feature_count', 'detection_context',
+        'feature_value_snapshot', 'top_features_by_value',
+    }
+    has_intel = (
+        bool(_INTEL_KEYS & set(details.keys()))
+        or anomaly.get('model_type')
+        or anomaly.get('model_version')
+    )
+
+    if has_intel:
+        st.markdown("---")
+        st.markdown("### 🧠 Detection Intelligence")
+
+        ic1, ic2, ic3 = st.columns(3)
+
+        with ic1:
+            with st.container(border=True):
+                st.markdown("**📊 Score Analysis**")
+                if details.get('score_percentile'):
+                    st.metric("Percentile", details['score_percentile'])
+                if details.get('anomaly_magnitude'):
+                    st.metric("Magnitude", details['anomaly_magnitude'])
+                if details.get('score_band') is not None:
+                    st.metric("Score Band", f"{details['score_band']}/10")
+                if details.get('threshold_margin') is not None:
+                    st.metric("Threshold Margin", f"{details['threshold_margin']:+.3f}")
+                if details.get('threshold_exceedance_pct') is not None:
+                    st.metric("Exceedance", f"{details['threshold_exceedance_pct']:.1f}%")
+
+        with ic2:
+            with st.container(border=True):
+                st.markdown("**🔬 Model Context**")
+                if anomaly.get('model_type'):
+                    st.metric("Detector Class", anomaly['model_type'])
+                if anomaly.get('model_version'):
+                    st.metric("Model Version", anomaly['model_version'])
+                if details.get('trained_feature_count'):
+                    st.metric("Trained Features", details['trained_feature_count'])
+                if details.get('feature_count') is not None:
+                    st.metric("Data Features", details['feature_count'])
+
+        with ic3:
+            with st.container(border=True):
+                st.markdown("**⚙️ Job Provenance**")
+                ctx = details.get('detection_context', {})
+                if isinstance(ctx, dict):
+                    if ctx.get('job_id'):
+                        st.markdown(f"**Job ID**")
+                        st.code(ctx['job_id'], language=None)
+                    if ctx.get('batch_size') is not None:
+                        st.metric("Batch Size", ctx['batch_size'])
+                    if ctx.get('detector_algorithm'):
+                        st.metric("Algorithm", ctx['detector_algorithm'])
+
+        # Score explanation — full-width callout
+        if details.get('score_explanation'):
+            score = float(anomaly.get('score', 0))
+            if score >= 0.90:
+                st.error(f"💡 {details['score_explanation']}")
+            elif score >= 0.70:
+                st.warning(f"💡 {details['score_explanation']}")
+            else:
+                st.info(f"💡 {details['score_explanation']}")
+
+        # Feature deep-dives side by side
+        top_feats = details.get('top_features_by_value', {})
+        snap = details.get('feature_value_snapshot', {})
+        if top_feats or snap:
+            fc1, fc2 = st.columns(2)
+            with fc1:
+                if isinstance(top_feats, dict) and top_feats:
+                    with st.expander("🏆 Top Features by Absolute Value"):
+                        for fname, fval in top_feats.items():
+                            st.metric(fname.replace('_', ' ').title(), f"{fval:.4f}")
+            with fc2:
+                if isinstance(snap, dict) and snap:
+                    with st.expander("📸 Feature Value Snapshot (this data point)"):
+                        for fname, fval in snap.items():
+                            st.metric(fname.replace('_', ' ').title(), f"{fval:.4f}")
 
 def render_pattern_analysis(anomaly):
     """Render pattern analysis for the anomaly."""
