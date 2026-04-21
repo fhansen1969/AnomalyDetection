@@ -26,38 +26,27 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIG_FILE="$PROJECT_ROOT/config/config.yaml"
 
 # ---------------------------------------------------------------------------
-# Read database credentials from config/config.yaml (database.connection)
-# Falls back to known defaults if the file or keys are missing.
+# Read SQLite database path from config/config.yaml (database.path or database.file_path)
 # ---------------------------------------------------------------------------
 parse_yaml_value() {
-    # Usage: parse_yaml_value <file> <key>
-    # Searches for "  key: value" under the database.connection section.
     local file="$1" key="$2"
-    # Extract the value with a simple grep+sed; handles quoted and unquoted values.
-    grep -A 20 "^database:" "$file" 2>/dev/null \
-        | grep -A 10 "connection:" \
-        | grep "^\s*${key}:" \
+    grep -A 10 "^database:" "$file" 2>/dev/null \
+        | grep "^[[:space:]]*${key}:" \
         | head -1 \
-        | sed "s/.*${key}:\s*['\"]*//" \
-        | sed "s/['\"\r]*//" \
+        | sed "s/.*${key}:[[:space:]]*//" \
+        | sed "s/['\"]//g" \
         | tr -d '[:space:]'
 }
 
 if [ -f "$CONFIG_FILE" ]; then
-    _host=$(parse_yaml_value "$CONFIG_FILE" "host")
-    _port=$(parse_yaml_value "$CONFIG_FILE" "port")
-    _db=$(parse_yaml_value "$CONFIG_FILE" "database")
-    _user=$(parse_yaml_value "$CONFIG_FILE" "user")
-    _pass=$(parse_yaml_value "$CONFIG_FILE" "password")
+    _db_path=$(parse_yaml_value "$CONFIG_FILE" "path")
+    [ -z "$_db_path" ] && _db_path=$(parse_yaml_value "$CONFIG_FILE" "file_path")
 fi
-
-# Environment variable overrides take precedence; config.yaml is the next source;
-# then built-in defaults.
-DB_HOST="${DB_HOST:-${_host:-localhost}}"
-DB_PORT="${DB_PORT:-${_port:-5432}}"
-DB_NAME="${DB_NAME:-${_db:-anomaly_detection}}"
-DB_USER="${DB_USER:-${_user:-anomaly_user}}"
-DB_PASSWORD="${DB_PASSWORD:-${_pass:-St@rW@rs!}}"
+DB_PATH="${DB_PATH:-${_db_path:-storage/anomaly_detection.db}}"
+# Resolve relative paths against the project root
+if [[ "$DB_PATH" != /* ]]; then
+    DB_PATH="$PROJECT_ROOT/$DB_PATH"
+fi
 
 # output_dir from config (system.output_dir); default is "results"
 if [ -f "$CONFIG_FILE" ]; then
@@ -134,27 +123,18 @@ confirm() {
     esac
 }
 
-# Run a psql command with the application user credentials.
-# Exports PGPASSWORD so psql never prompts interactively.
-run_psql() {
-    PGPASSWORD="$DB_PASSWORD" psql \
-        -h "$DB_HOST" \
-        -p "$DB_PORT" \
-        -U "$DB_USER" \
-        -d "$DB_NAME" \
-        "$@"
+# Run a sqlite3 command against the configured database file.
+run_sqlite() {
+    sqlite3 "$DB_PATH" "$@"
 }
 
-# Check whether we can connect to the database as the application user.
+# Check whether the SQLite database file exists and is readable.
 can_connect() {
-    PGPASSWORD="$DB_PASSWORD" psql \
-        -h "$DB_HOST" \
-        -p "$DB_PORT" \
-        -U "$DB_USER" \
-        -d "$DB_NAME" \
-        -c "SELECT 1" \
-        -q --no-align --tuples-only \
-        > /dev/null 2>&1
+    if [ ! -f "$DB_PATH" ]; then
+        echo "Database file not found: $DB_PATH" >&2
+        return 1
+    fi
+    sqlite3 "$DB_PATH" "SELECT 1;" > /dev/null 2>&1
 }
 
 ################################################################################
@@ -162,62 +142,56 @@ can_connect() {
 ################################################################################
 
 cleanup_database() {
-    log "Database cleanup: host=$DB_HOST port=$DB_PORT db=$DB_NAME user=$DB_USER"
+    log "Database cleanup: $DB_PATH"
 
-    # Check if PostgreSQL client is available
-    if ! command -v psql &> /dev/null; then
-        warn "PostgreSQL client (psql) not found — skipping database cleanup"
+    if ! command -v sqlite3 &> /dev/null; then
+        warn "sqlite3 not found — skipping database cleanup"
         return 0
     fi
 
-    # Verify connectivity before asking the user
     if ! can_connect; then
-        error "Cannot connect to $DB_NAME as $DB_USER on $DB_HOST:$DB_PORT"
-        error "Check credentials in config/config.yaml (database.connection) or set DB_* env vars."
+        error "Cannot open database: $DB_PATH"
+        error "Run the application once to create the database, or check DB_PATH."
         return 1
     fi
 
     echo ""
-    echo "  Tables that will be TRUNCATED (data cleared, schema kept):"
+    echo "  Tables that will be cleared (data deleted, schema kept):"
     for t in "${TRUNCATE_TABLES[@]}"; do
         echo "    - $t"
     done
     echo "  Tables NOT touched (configuration): models, processors, collectors"
     echo ""
 
-    if ! confirm "Truncate all operational tables in '$DB_NAME'?" "n"; then
+    if ! confirm "Clear all operational tables in '$DB_PATH'?" "n"; then
         warn "Skipped database cleanup"
         return 0
     fi
 
-    log "Truncating tables..."
+    log "Clearing tables..."
 
-    # Build a single TRUNCATE statement with CASCADE so FK dependencies don't block.
-    # Tables are listed leaf-first (children before parents) but CASCADE handles order.
-    local sql=""
-    sql+="BEGIN;"$'\n'
+    # SQLite: use DELETE instead of TRUNCATE; wrap in a transaction.
+    local sql="PRAGMA foreign_keys=OFF;"$'\n'"BEGIN;"$'\n'
     for table in "${TRUNCATE_TABLES[@]}"; do
-        sql+="TRUNCATE TABLE IF EXISTS ${table} CASCADE;"$'\n'
+        sql+="DELETE FROM ${table};"$'\n'
     done
-    # Reset system_status to a clean initialized state after truncation
-    sql+="INSERT INTO system_status (key, value, updated_at)"$'\n'
-    sql+="VALUES ('status', '{\"initialized\": true}'::jsonb, NOW())"$'\n'
-    sql+="ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();"$'\n'
-    sql+="COMMIT;"$'\n'
+    # Seed system_status so the dashboard doesn't fail on startup
+    sql+="INSERT OR REPLACE INTO system_status (key, value, updated_at)"$'\n'
+    sql+="VALUES ('status', '{\"initialized\": true}', datetime('now'));"$'\n'
+    sql+="COMMIT;"$'\n'"PRAGMA foreign_keys=ON;"$'\n'
 
-    if echo "$sql" | run_psql -f - 2>&1; then
-        success "Database tables truncated successfully"
+    if echo "$sql" | run_sqlite 2>&1; then
+        success "Database tables cleared successfully"
         CLEANED_DB=true
 
-        # Report row counts
         log "Row counts after cleanup:"
         for table in "${TRUNCATE_TABLES[@]}"; do
             local count
-            count=$(run_psql -t -c "SELECT COUNT(*) FROM ${table}" 2>/dev/null | tr -d '[:space:]') || count="?"
+            count=$(run_sqlite "SELECT COUNT(*) FROM ${table};" 2>/dev/null) || count="?"
             echo "    ${table}: ${count} rows"
         done
     else
-        error "Failed to truncate database tables"
+        error "Failed to clear database tables"
         return 1
     fi
 }
@@ -327,7 +301,7 @@ print_summary() {
     echo "╚════════════════════════════════════════════════════════╝"
 
     if [ "$CLEANED_DB" = true ]; then
-        echo -e "  ${GREEN}✓${NC} Database tables truncated ($DB_NAME)"
+        echo -e "  ${GREEN}✓${NC} Database tables cleared ($DB_PATH)"
     fi
 
     if [ ${#CLEANED_DIRS[@]} -gt 0 ]; then
@@ -412,17 +386,13 @@ Options:
   --logs          Clean log files (interactive unless --force)
   --help          Show this help message
 
-Environment Variables (override config.yaml values):
-  DB_HOST         Database host     (config default: localhost)
-  DB_PORT         Database port     (config default: 5432)
-  DB_NAME         Database name     (config default: anomaly_detection)
-  DB_USER         Database user     (config default: anomaly_user)
-  DB_PASSWORD     Database password (config default: read from config.yaml)
+Environment Variables:
+  DB_PATH         Override the SQLite database file path
 
-Database credentials are read from:
-  config/config.yaml  ->  database.connection.{host,port,database,user,password}
+SQLite database path is read from:
+  config/config.yaml  ->  database.path  (override with DB_PATH env var)
 
-Tables truncated by --db (operational data only):
+Tables cleared by --db (operational data only):
   anomalies, jobs, background_jobs, agent_messages, agent_activities,
   anomaly_analysis, system_status, model_states, processed_data
 
