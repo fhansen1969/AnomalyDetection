@@ -2,6 +2,14 @@
 ################################################################################
 # Cleanup Script - Reset System for Fresh Start
 # Includes database cleanup and directory structure reset
+#
+# Usage:
+#   ./cleanup.sh                  # Interactive mode (prompts for each step)
+#   ./cleanup.sh --force          # Non-interactive: cleans everything without prompts
+#   ./cleanup.sh --all            # Alias for --force
+#   ./cleanup.sh --db             # Database cleanup only (interactive)
+#   ./cleanup.sh --db --force     # Database cleanup only, non-interactive
+#   ./cleanup.sh --dirs --cache   # Specific sections, interactive
 ################################################################################
 
 set -e
@@ -15,13 +23,70 @@ NC='\033[0m' # No Color
 
 # Configuration
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONFIG_FILE="$PROJECT_ROOT/config/config.yaml"
 
-# Database configuration (read from config or use defaults)
-DB_HOST="${DB_HOST:-localhost}"
-DB_PORT="${DB_PORT:-5432}"
-DB_NAME="${DB_NAME:-anomaly_detection}"
-DB_USER="${DB_USER:-anomaly_user}"
-DB_PASSWORD="${DB_PASSWORD:-}"
+# ---------------------------------------------------------------------------
+# Read database credentials from config/config.yaml (database.connection)
+# Falls back to known defaults if the file or keys are missing.
+# ---------------------------------------------------------------------------
+parse_yaml_value() {
+    # Usage: parse_yaml_value <file> <key>
+    # Searches for "  key: value" under the database.connection section.
+    local file="$1" key="$2"
+    # Extract the value with a simple grep+sed; handles quoted and unquoted values.
+    grep -A 20 "^database:" "$file" 2>/dev/null \
+        | grep -A 10 "connection:" \
+        | grep "^\s*${key}:" \
+        | head -1 \
+        | sed "s/.*${key}:\s*['\"]*//" \
+        | sed "s/['\"\r]*//" \
+        | tr -d '[:space:]'
+}
+
+if [ -f "$CONFIG_FILE" ]; then
+    _host=$(parse_yaml_value "$CONFIG_FILE" "host")
+    _port=$(parse_yaml_value "$CONFIG_FILE" "port")
+    _db=$(parse_yaml_value "$CONFIG_FILE" "database")
+    _user=$(parse_yaml_value "$CONFIG_FILE" "user")
+    _pass=$(parse_yaml_value "$CONFIG_FILE" "password")
+fi
+
+# Environment variable overrides take precedence; config.yaml is the next source;
+# then built-in defaults.
+DB_HOST="${DB_HOST:-${_host:-localhost}}"
+DB_PORT="${DB_PORT:-${_port:-5432}}"
+DB_NAME="${DB_NAME:-${_db:-anomaly_detection}}"
+DB_USER="${DB_USER:-${_user:-anomaly_user}}"
+DB_PASSWORD="${DB_PASSWORD:-${_pass:-St@rW@rs!}}"
+
+# output_dir from config (system.output_dir); default is "results"
+if [ -f "$CONFIG_FILE" ]; then
+    _output_dir=$(grep -A 5 "^system:" "$CONFIG_FILE" 2>/dev/null \
+        | grep "output_dir:" | head -1 \
+        | sed "s/.*output_dir:\s*['\"]*//" \
+        | sed "s/['\"\r]*//" \
+        | tr -d '[:space:]')
+fi
+OUTPUT_DIR="${_output_dir:-results}"
+
+# Tables to truncate (operational data - NOT configuration tables like models/processors/collectors)
+TRUNCATE_TABLES=(
+    "agent_messages"
+    "agent_activities"
+    "anomaly_analysis"
+    "background_jobs"
+    "model_states"
+    "processed_data"
+    "system_status"
+    "jobs"
+    "anomalies"
+)
+
+# Tracking for summary report
+CLEANED_DB=false
+CLEANED_DIRS=()
+CLEANED_LOGS=false
+CLEANED_CACHE=false
 
 ################################################################################
 # Helper Functions
@@ -43,195 +108,210 @@ error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# confirm <prompt> [default]
+# Returns 0 (yes) or 1 (no).
+# In FORCE mode always returns 0 (yes).
 confirm() {
     local prompt="$1"
     local default="${2:-n}"
-    
+
+    if [ "$FORCE" = true ]; then
+        return 0
+    fi
+
     if [ "$default" = "y" ]; then
         prompt="$prompt [Y/n]"
     else
         prompt="$prompt [y/N]"
     fi
-    
+
     read -p "$prompt " response
     response=${response:-$default}
-    
+
     case "$response" in
         [Yy]* ) return 0 ;;
-        [Nn]* ) return 1 ;;
         * ) return 1 ;;
     esac
+}
+
+# Run a psql command with the application user credentials.
+# Exports PGPASSWORD so psql never prompts interactively.
+run_psql() {
+    PGPASSWORD="$DB_PASSWORD" psql \
+        -h "$DB_HOST" \
+        -p "$DB_PORT" \
+        -U "$DB_USER" \
+        -d "$DB_NAME" \
+        "$@"
+}
+
+# Check whether we can connect to the database as the application user.
+can_connect() {
+    PGPASSWORD="$DB_PASSWORD" psql \
+        -h "$DB_HOST" \
+        -p "$DB_PORT" \
+        -U "$DB_USER" \
+        -d "$DB_NAME" \
+        -c "SELECT 1" \
+        -q --no-align --tuples-only \
+        > /dev/null 2>&1
 }
 
 ################################################################################
 # Cleanup Functions
 ################################################################################
 
+cleanup_database() {
+    log "Database cleanup: host=$DB_HOST port=$DB_PORT db=$DB_NAME user=$DB_USER"
+
+    # Check if PostgreSQL client is available
+    if ! command -v psql &> /dev/null; then
+        warn "PostgreSQL client (psql) not found — skipping database cleanup"
+        return 0
+    fi
+
+    # Verify connectivity before asking the user
+    if ! can_connect; then
+        error "Cannot connect to $DB_NAME as $DB_USER on $DB_HOST:$DB_PORT"
+        error "Check credentials in config/config.yaml (database.connection) or set DB_* env vars."
+        return 1
+    fi
+
+    echo ""
+    echo "  Tables that will be TRUNCATED (data cleared, schema kept):"
+    for t in "${TRUNCATE_TABLES[@]}"; do
+        echo "    - $t"
+    done
+    echo "  Tables NOT touched (configuration): models, processors, collectors"
+    echo ""
+
+    if ! confirm "Truncate all operational tables in '$DB_NAME'?" "n"; then
+        warn "Skipped database cleanup"
+        return 0
+    fi
+
+    log "Truncating tables..."
+
+    # Build a single TRUNCATE statement with CASCADE so FK dependencies don't block.
+    # Tables are listed leaf-first (children before parents) but CASCADE handles order.
+    local sql=""
+    sql+="BEGIN;"$'\n'
+    for table in "${TRUNCATE_TABLES[@]}"; do
+        sql+="TRUNCATE TABLE IF EXISTS ${table} CASCADE;"$'\n'
+    done
+    # Reset system_status to a clean initialized state after truncation
+    sql+="INSERT INTO system_status (key, value, updated_at)"$'\n'
+    sql+="VALUES ('status', '{\"initialized\": true}'::jsonb, NOW())"$'\n'
+    sql+="ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();"$'\n'
+    sql+="COMMIT;"$'\n'
+
+    if echo "$sql" | run_psql -f - 2>&1; then
+        success "Database tables truncated successfully"
+        CLEANED_DB=true
+
+        # Report row counts
+        log "Row counts after cleanup:"
+        for table in "${TRUNCATE_TABLES[@]}"; do
+            local count
+            count=$(run_psql -t -c "SELECT COUNT(*) FROM ${table}" 2>/dev/null | tr -d '[:space:]') || count="?"
+            echo "    ${table}: ${count} rows"
+        done
+    else
+        error "Failed to truncate database tables"
+        return 1
+    fi
+}
+
 cleanup_directories() {
-    log "Cleaning up directories..."
-    
+    log "Cleaning up output/results directories..."
+
     local dirs_to_clean=(
+        "$OUTPUT_DIR"
+        "reports"
         "data/processed"
         "data/training"
         "data/validation"
         "data/test"
-        "storage/models"
         "storage/anomalies"
         "storage/processed"
         "storage/state"
         "storage/backups"
-        "logs"
-        "reports"
     )
-    
+
     for dir in "${dirs_to_clean[@]}"; do
-        if [ -d "$PROJECT_ROOT/$dir" ]; then
-            if confirm "Remove $dir?" "n"; then
-                rm -rf "$PROJECT_ROOT/$dir"
+        local full_path="$PROJECT_ROOT/$dir"
+        if [ -d "$full_path" ]; then
+            if confirm "Remove '$dir'?" "n"; then
+                rm -rf "$full_path"
                 success "Removed $dir"
+                CLEANED_DIRS+=("$dir")
             else
                 warn "Skipped $dir"
             fi
         fi
     done
+
+    # Recreate the output_dir empty so the rest of the system doesn't error
+    if [[ " ${CLEANED_DIRS[*]} " == *" $OUTPUT_DIR "* ]]; then
+        mkdir -p "$PROJECT_ROOT/$OUTPUT_DIR"
+        log "Recreated empty $OUTPUT_DIR directory"
+    fi
 }
 
-cleanup_database() {
-    log "Cleaning up database..."
-    
-    # Check if PostgreSQL is available
-    if ! command -v psql &> /dev/null; then
-        warn "PostgreSQL client (psql) not found, skipping database cleanup"
+cleanup_logs() {
+    log "Cleaning up log files..."
+
+    local logs_dir="$PROJECT_ROOT/logs"
+
+    if [ ! -d "$logs_dir" ]; then
+        log "No logs directory found — nothing to clean"
         return 0
     fi
-    
-    # Determine postgres superuser (try common options)
-    local PG_SUPERUSER="postgres"
-    if ! psql -U postgres -d postgres -c "SELECT 1" &> /dev/null; then
-        # Try current user
-        PG_SUPERUSER=$(whoami)
-        if ! psql -U "$PG_SUPERUSER" -d postgres -c "SELECT 1" &> /dev/null; then
-            warn "Cannot connect to PostgreSQL as superuser, trying as $DB_USER"
-            PG_SUPERUSER="$DB_USER"
-        fi
-    fi
-    
-    log "Using PostgreSQL superuser: $PG_SUPERUSER"
-    
-    # Check if database exists
-    if psql -h "$DB_HOST" -p "$DB_PORT" -U "$PG_SUPERUSER" -d postgres -lqt 2>/dev/null | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
-        if confirm "Drop and recreate database $DB_NAME?" "n"; then
-            log "Dropping database $DB_NAME..."
-            
-            # Terminate existing connections
-            psql -h "$DB_HOST" -p "$DB_PORT" -U "$PG_SUPERUSER" -d postgres << EOF 2>/dev/null || true
-SELECT pg_terminate_backend(pg_stat_activity.pid) 
-FROM pg_stat_activity 
-WHERE pg_stat_activity.datname = '$DB_NAME' 
-  AND pid <> pg_backend_pid();
-EOF
-            
-            # Small delay to ensure connections are closed
-            sleep 1
-            
-            # Drop database using superuser
-            if psql -h "$DB_HOST" -p "$DB_PORT" -U "$PG_SUPERUSER" -d postgres -c "DROP DATABASE IF EXISTS $DB_NAME;" 2>/dev/null; then
-                success "Database dropped"
-            else
-                error "Failed to drop database. Trying with dropdb command..."
-                dropdb -h "$DB_HOST" -p "$DB_PORT" -U "$PG_SUPERUSER" "$DB_NAME" 2>/dev/null || {
-                    error "Failed to drop database with both methods"
-                    warn "Try manually: sudo -u postgres psql -c 'DROP DATABASE $DB_NAME;'"
-                    return 1
-                }
-                success "Database dropped"
-            fi
+
+    if confirm "Remove ALL log files?" "n"; then
+        rm -rf "$logs_dir"
+        mkdir -p "$logs_dir"
+        success "Log directory cleared (directory recreated empty)"
+        CLEANED_LOGS=true
+    else
+        if confirm "Remove log files older than 7 days?" "y"; then
+            local count
+            count=$(find "$logs_dir" -type f -name "*.log" -mtime +7 | wc -l | tr -d '[:space:]')
+            find "$logs_dir" -type f -name "*.log" -mtime +7 -delete 2>/dev/null || true
+            success "Removed $count log file(s) older than 7 days"
+            CLEANED_LOGS=true
         else
-            if confirm "Clear all tables instead?" "n"; then
-                clear_database_tables
-            else
-                warn "Skipped database cleanup"
-            fi
+            warn "Skipped log cleanup"
         fi
-    else
-        log "Database $DB_NAME does not exist"
-    fi
-}
-
-clear_database_tables() {
-    log "Clearing database tables..."
-    
-    if ! psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1" &> /dev/null; then
-        error "Cannot connect to database $DB_NAME as $DB_USER"
-        return 1
-    fi
-    
-    psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" <<EOF
--- Clear data from all tables
-TRUNCATE TABLE anomalies CASCADE;
-TRUNCATE TABLE jobs CASCADE;
-TRUNCATE TABLE processed_data CASCADE;
-TRUNCATE TABLE agent_activities CASCADE;
-TRUNCATE TABLE agent_messages CASCADE;
-
-SELECT 'All tables cleared successfully' as status;
-EOF
-    
-    if [ $? -eq 0 ]; then
-        success "Database tables cleared"
-    else
-        error "Failed to clear database tables"
-        return 1
     fi
 }
 
 cleanup_cache() {
-    log "Cleaning up cache files..."
-    
-    # Python cache
+    log "Cleaning up Python cache files..."
+
     find "$PROJECT_ROOT" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
     find "$PROJECT_ROOT" -type f -name "*.pyc" -delete 2>/dev/null || true
     find "$PROJECT_ROOT" -type f -name "*.pyo" -delete 2>/dev/null || true
-    
-    # Temporary files
     find "$PROJECT_ROOT" -type f -name "*.tmp" -delete 2>/dev/null || true
     find "$PROJECT_ROOT" -type f -name "*.log.tmp" -delete 2>/dev/null || true
     find "$PROJECT_ROOT" -type f -name ".DS_Store" -delete 2>/dev/null || true
-    
-    success "Cache files cleaned"
-}
 
-cleanup_logs() {
-    log "Cleaning up old log files..."
-    
-    if [ -d "$PROJECT_ROOT/logs" ]; then
-        if confirm "Remove all log files?" "n"; then
-            rm -rf "$PROJECT_ROOT/logs"
-            success "Log files removed"
-        else
-            # Keep only recent logs
-            if confirm "Remove logs older than 7 days?" "y"; then
-                find "$PROJECT_ROOT/logs" -type f -name "*.log" -mtime +7 -delete 2>/dev/null || true
-                success "Old log files removed"
-            fi
-        fi
-    fi
+    success "Python cache files cleaned"
+    CLEANED_CACHE=true
 }
 
 stop_services() {
-    log "Stopping running services..."
-    
-    # Stop API service
-    if pgrep -f "api_services.py" > /dev/null; then
-        if confirm "Stop API service?" "y"; then
+    log "Checking for running services..."
+
+    if pgrep -f "api_services.py" > /dev/null 2>&1; then
+        if confirm "Stop API service (api_services.py)?" "y"; then
             pkill -f "api_services.py" || true
             sleep 2
             success "API service stopped"
         fi
     fi
-    
-    # Stop any pipeline processes
-    if pgrep -f "pipeline.sh" > /dev/null; then
+
+    if pgrep -f "pipeline.sh" > /dev/null 2>&1; then
         if confirm "Stop pipeline processes?" "y"; then
             pkill -f "pipeline.sh" || true
             sleep 1
@@ -240,8 +320,41 @@ stop_services() {
     fi
 }
 
+print_summary() {
+    echo ""
+    echo "╔════════════════════════════════════════════════════════╗"
+    echo "║                   CLEANUP SUMMARY                     ║"
+    echo "╚════════════════════════════════════════════════════════╝"
+
+    if [ "$CLEANED_DB" = true ]; then
+        echo -e "  ${GREEN}✓${NC} Database tables truncated ($DB_NAME)"
+    fi
+
+    if [ ${#CLEANED_DIRS[@]} -gt 0 ]; then
+        echo -e "  ${GREEN}✓${NC} Directories removed:"
+        for d in "${CLEANED_DIRS[@]}"; do
+            echo "       - $d"
+        done
+    fi
+
+    if [ "$CLEANED_LOGS" = true ]; then
+        echo -e "  ${GREEN}✓${NC} Log files cleaned"
+    fi
+
+    if [ "$CLEANED_CACHE" = true ]; then
+        echo -e "  ${GREEN}✓${NC} Python cache cleaned"
+    fi
+
+    echo ""
+    echo "Next steps:"
+    echo "  1. Run utils/build_db.sh to recreate database schema and directories"
+    echo "  2. Start API service: ./start_api.sh"
+    echo "  3. Run training pipeline if needed"
+    echo ""
+}
+
 ################################################################################
-# Main Function
+# Main Function (interactive)
 ################################################################################
 
 main() {
@@ -249,42 +362,38 @@ main() {
     echo "║        ANOMALY DETECTION SYSTEM CLEANUP                ║"
     echo "╚════════════════════════════════════════════════════════╝"
     echo ""
-    
-    cd "$PROJECT_ROOT"
-    
-    warn "This will clean up your anomaly detection system"
-    warn "This action may be destructive!"
+
+    if [ "$FORCE" = true ]; then
+        warn "Running in non-interactive (--force) mode — all sections will be cleaned"
+    else
+        warn "This will clean up your anomaly detection system."
+        warn "Some actions are destructive and cannot be undone."
+    fi
     echo ""
-    
+
     if ! confirm "Continue with cleanup?" "n"; then
         log "Cleanup cancelled"
         exit 0
     fi
-    
+
     echo ""
-    
-    # Execute cleanup steps
+
     stop_services
     echo ""
-    
+
     cleanup_cache
     echo ""
-    
+
     cleanup_logs
     echo ""
-    
+
     cleanup_directories
     echo ""
-    
+
     cleanup_database
     echo ""
-    
-    success "Cleanup completed!"
-    echo ""
-    echo "Next steps:"
-    echo "  1. Run build_db.sh to recreate database and directories"
-    echo "  2. Start API service"
-    echo "  3. Run training pipeline"
+
+    print_summary
 }
 
 ################################################################################
@@ -296,29 +405,42 @@ show_help() {
 Usage: $0 [options]
 
 Options:
-  --all           Clean everything without prompting
-  --dirs          Clean only directories
-  --db            Clean only database
-  --cache         Clean only cache files
-  --logs          Clean only log files
+  --force, --all  Non-interactive: clean everything without prompting
+  --dirs          Clean output/results directories (interactive unless --force)
+  --db            Clean database tables (interactive unless --force)
+  --cache         Clean Python cache files
+  --logs          Clean log files (interactive unless --force)
   --help          Show this help message
 
-Environment Variables:
-  DB_HOST         Database host (default: localhost)
-  DB_PORT         Database port (default: 5432)
-  DB_NAME         Database name (default: anomaly_detection)
-  DB_USER         Database user (default: anomaly_user)
+Environment Variables (override config.yaml values):
+  DB_HOST         Database host     (config default: localhost)
+  DB_PORT         Database port     (config default: 5432)
+  DB_NAME         Database name     (config default: anomaly_detection)
+  DB_USER         Database user     (config default: anomaly_user)
+  DB_PASSWORD     Database password (config default: read from config.yaml)
+
+Database credentials are read from:
+  config/config.yaml  ->  database.connection.{host,port,database,user,password}
+
+Tables truncated by --db (operational data only):
+  anomalies, jobs, background_jobs, agent_messages, agent_activities,
+  anomaly_analysis, system_status, model_states, processed_data
+
+Tables NOT touched (configuration data):
+  models, processors, collectors
 
 Examples:
-  $0                    # Interactive cleanup
-  $0 --all              # Clean everything
-  $0 --dirs --cache     # Clean directories and cache only
+  $0                        # Fully interactive cleanup
+  $0 --force                # Clean everything without prompting
+  $0 --db                   # Database only, interactive
+  $0 --db --force           # Database only, non-interactive
+  $0 --dirs --cache         # Directories + cache, interactive
 
 EOF
 }
 
-# Default: interactive mode
-CLEAN_ALL=false
+# Flags
+FORCE=false
 CLEAN_DIRS=false
 CLEAN_DB=false
 CLEAN_CACHE=false
@@ -327,8 +449,8 @@ CLEAN_LOGS=false
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --all)
-            CLEAN_ALL=true
+        --force|--all)
+            FORCE=true
             shift
             ;;
         --dirs)
@@ -347,7 +469,7 @@ while [[ $# -gt 0 ]]; do
             CLEAN_LOGS=true
             shift
             ;;
-        --help)
+        --help|-h)
             show_help
             exit 0
             ;;
@@ -359,13 +481,23 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# If specific flags set, run only those
+# If --force with no section flags, treat as "clean everything"
+SPECIFIC_SECTIONS=false
 if [ "$CLEAN_DIRS" = true ] || [ "$CLEAN_DB" = true ] || [ "$CLEAN_CACHE" = true ] || [ "$CLEAN_LOGS" = true ]; then
-    [ "$CLEAN_DIRS" = true ] && cleanup_directories
-    [ "$CLEAN_DB" = true ] && cleanup_database
-    [ "$CLEAN_CACHE" = true ] && cleanup_cache
-    [ "$CLEAN_LOGS" = true ] && cleanup_logs
+    SPECIFIC_SECTIONS=true
+fi
+
+if [ "$SPECIFIC_SECTIONS" = true ]; then
+    # Run only the requested sections
+    if [ "$FORCE" = true ]; then
+        warn "Non-interactive mode: cleaning selected sections without prompting"
+    fi
+    [ "$CLEAN_CACHE" = true ] && { cleanup_cache; echo ""; }
+    [ "$CLEAN_LOGS" = true ] && { cleanup_logs; echo ""; }
+    [ "$CLEAN_DIRS" = true ] && { cleanup_directories; echo ""; }
+    [ "$CLEAN_DB" = true ] && { cleanup_database; echo ""; }
+    print_summary
 else
-    # Run main interactive cleanup
+    # Full cleanup (interactive or forced)
     main
 fi

@@ -52,7 +52,14 @@ if not config:
         "password": "St@rW@rs!"
     }
 else:
-    DB_CONFIG = config['storage']['postgresql']
+    db_section = config.get('database', {})
+    DB_CONFIG = db_section.get('connection', {
+        "host": "localhost",
+        "port": 5432,
+        "database": "anomaly_detection",
+        "user": "anomaly_user",
+        "password": "St@rW@rs!"
+    })
     logger.info(f"Loaded database configuration from config.yaml")
 
 # Connection pool - initialize as None and create when needed
