@@ -215,7 +215,7 @@ class AnomalyDetectionModel(abc.ABC):
         # Include features if present
         if "features" in item and isinstance(item["features"], dict):
             anomaly["features"] = item["features"]
-        
+
         # Determine severity based on score
         if score >= 0.9:
             anomaly["severity"] = "Critical"
@@ -225,7 +225,65 @@ class AnomalyDetectionModel(abc.ABC):
             anomaly["severity"] = "Medium"
         else:
             anomaly["severity"] = "Low"
-        
+
+        # --- Enrichment: score analysis ---
+        score_percentile = (
+            "top 1%"    if score >= 0.99 else
+            "top 5%"    if score >= 0.95 else
+            "top 10%"   if score >= 0.90 else
+            "top 20%"   if score >= 0.80 else
+            "top 30%"   if score >= 0.70 else
+            "top 50%"   if score >= 0.50 else
+            "bottom 50%"
+        )
+        anomaly_magnitude = (
+            "Extreme"  if score >= 0.90 else
+            "High"     if score >= 0.70 else
+            "Moderate" if score >= 0.50 else
+            "Low"
+        )
+        details["score_percentile"] = score_percentile
+        details["score_band"] = min(10, max(1, round(score * 10)))
+        details["anomaly_magnitude"] = anomaly_magnitude
+
+        # --- Enrichment: feature summary ---
+        feat_dict = item.get("features", {}) if isinstance(item, dict) else {}
+        if not isinstance(feat_dict, dict):
+            feat_dict = {}
+        feat_names = sorted(feat_dict.keys())
+        details["feature_count"] = len(feat_names)
+        if feat_names:
+            details["contributing_features"] = feat_names[:20]
+        # Top 5 numeric features by absolute value
+        numeric_feats = {}
+        for k, v in feat_dict.items():
+            try:
+                numeric_feats[k] = float(v)
+            except (ValueError, TypeError):
+                pass
+        if numeric_feats:
+            top5 = sorted(numeric_feats.items(), key=lambda x: abs(x[1]), reverse=True)[:5]
+            details["top_features_by_value"] = {k: round(v, 4) for k, v in top5}
+
+        # --- Enrichment: network field extraction ---
+        # Pull src/dst IP from item top-level or features, so downstream consumers
+        # don't have to re-parse original_data themselves.
+        if isinstance(item, dict):
+            for src_field in ("src_ip", "source_ip", "sourceIp", "ip", "ip_address"):
+                val = item.get(src_field)
+                if val is None and isinstance(feat_dict, dict):
+                    val = feat_dict.get(src_field)
+                if val:
+                    anomaly["src_ip"] = str(val)
+                    break
+            for dst_field in ("dst_ip", "dest_ip", "destination_ip", "destIp", "remote_ip"):
+                val = item.get(dst_field)
+                if val is None and isinstance(feat_dict, dict):
+                    val = feat_dict.get(dst_field)
+                if val:
+                    anomaly["dst_ip"] = str(val)
+                    break
+
         return anomaly
     
     def __repr__(self):
